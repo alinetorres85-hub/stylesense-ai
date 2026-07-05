@@ -39,7 +39,15 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "StyleSense AI",
+      "shortName": "StyleSense",
+      "themeColor": "#A86E9B",
+      "backgroundColor": "#F8F1ED",
+      "display": "standalone",
+      "lang": "pt-BR"
     }
   }
 }

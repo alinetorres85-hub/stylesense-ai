@@ -15,6 +15,7 @@ import {
   SavedOutfit,
   Season,
   currentSeasonBR,
+  outfitPieces,
   savedOccasions,
   savedSeasons,
 } from '../types';
@@ -25,6 +26,36 @@ import { Chip, PrimaryButton } from './ui';
 import { useWardrobe } from '../store';
 
 const BUILDER_SLOTS: OutfitSlot[] = ['top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
+
+// Reconstrói um Outfit (por slot) a partir de uma lista de peças. Camadas extras
+// de "parte de cima" vão para extraTops (preservadas, mesmo sem edição visual aqui).
+function outfitFromPieces(pieces: ClothingItem[]): Outfit {
+  const o: Outfit = {};
+  for (const p of pieces) {
+    switch (p.category) {
+      case 'top':
+        if (!o.top) o.top = p;
+        else o.extraTops = [...(o.extraTops ?? []), p];
+        break;
+      case 'bottom':
+        o.bottom = p;
+        break;
+      case 'dress':
+        o.dress = p;
+        break;
+      case 'outerwear':
+        o.outerwear = p;
+        break;
+      case 'shoes':
+        o.shoes = p;
+        break;
+      case 'accessory':
+        o.accessory = p;
+        break;
+    }
+  }
+  return o;
+}
 
 function weekdayLabel(date: string): string {
   const d = new Date(`${date}T12:00:00`);
@@ -52,24 +83,37 @@ function resolveIds(s: SavedOutfit, items: ClothingItem[]): ClothingItem[] {
 }
 
 export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
-  const { items, savedOutfits, weekPlan, setPlanLook, saveOutfit } = useWardrobe();
+  const { items, savedOutfits, weekPlan, setPlanLook, saveOutfit, updateSavedOutfit } =
+    useWardrobe();
   const [open, setOpen] = useState(false);
   const [pickingDay, setPickingDay] = useState<string | null>(null);
   const [pickOcc, setPickOcc] = useState<Occasion | 'all'>('all');
   const [pickSeason, setPickSeason] = useState<Season | 'all'>('all');
 
-  // builder de look novo dentro do planejador
+  // builder de look novo/edição dentro do planejador
   const [building, setBuilding] = useState(false);
   const [builderOutfit, setBuilderOutfit] = useState<Outfit>({});
   const [builderSlot, setBuilderSlot] = useState<OutfitSlot | null>(null);
+  const [editingLookId, setEditingLookId] = useState<string | null>(null);
 
   function openPicker(date: string) {
     setPickingDay(date);
     setPickOcc('all');
     setBuilding(false);
     setBuilderOutfit({});
+    setEditingLookId(null);
     // pré-seleciona a estação do dia escolhido (facilita a escolha)
     setPickSeason(currentSeasonBR(new Date(`${date}T12:00:00`)));
+  }
+
+  // Editar as peças do look já atribuído a um dia (abre o construtor preenchido).
+  function openLookEditor(date: string, savedId: string) {
+    const s = savedOutfits.find((x) => x.id === savedId);
+    if (!s) return;
+    setPickingDay(date);
+    setBuilding(true);
+    setEditingLookId(savedId);
+    setBuilderOutfit(outfitFromPieces(resolveIds(s, items)));
   }
 
   function closePicker() {
@@ -77,6 +121,7 @@ export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
     setBuilding(false);
     setBuilderOutfit({});
     setBuilderSlot(null);
+    setEditingLookId(null);
   }
 
   function handleBuilderPick(item: ClothingItem | null) {
@@ -92,11 +137,16 @@ export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
 
   function saveBuilt() {
     if (!pickingDay) return;
-    const pieces = BUILDER_SLOTS.map((s) => builderOutfit[s]).filter(Boolean);
+    const pieces = outfitPieces(builderOutfit);
     if (pieces.length === 0) return;
-    const season = currentSeasonBR(new Date(`${pickingDay}T12:00:00`));
-    const saved = saveOutfit(builderOutfit, { seasons: [season] });
-    setPlanLook(pickingDay, saved.id);
+    if (editingLookId) {
+      // edita o look salvo (reflete na aba Salvos e mantém no dia)
+      updateSavedOutfit(editingLookId, { itemIds: pieces.map((p) => p.id) });
+    } else {
+      const season = currentSeasonBR(new Date(`${pickingDay}T12:00:00`));
+      const saved = saveOutfit(builderOutfit, { seasons: [season] });
+      setPlanLook(pickingDay, saved.id);
+    }
     closePicker();
   }
 
@@ -148,8 +198,11 @@ export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
                     ))}
                   </View>
                   <View style={styles.dayActions}>
+                    <Pressable onPress={() => openLookEditor(day.date, savedId!)} hitSlop={6}>
+                      <Text style={styles.actionLink}>editar</Text>
+                    </Pressable>
                     <Pressable onPress={() => openPicker(day.date)} hitSlop={6}>
-                      <Text style={styles.actionLink}>trocar look</Text>
+                      <Text style={styles.actionLink}>trocar</Text>
                     </Pressable>
                     <Pressable onPress={() => setPlanLook(day.date, null)} hitSlop={6}>
                       <Text style={styles.actionRemove}>remover</Text>
@@ -175,7 +228,9 @@ export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
             {building ? (
               <>
-                <Text style={styles.sheetTitle}>Montar look novo</Text>
+                <Text style={styles.sheetTitle}>
+                  {editingLookId ? 'Editar look do dia' : 'Montar look novo'}
+                </Text>
                 <View style={styles.builderGrid}>
                   {BUILDER_SLOTS.map((slot) => {
                     const it = builderOutfit[slot];
@@ -212,7 +267,7 @@ export function WeekPlanner({ forecast }: { forecast: DailyForecast[] }) {
                     style={{ flex: 1 }}
                   />
                   <PrimaryButton
-                    label="Salvar e usar"
+                    label={editingLookId ? 'Salvar alterações' : 'Salvar e usar'}
                     onPress={saveBuilt}
                     disabled={!builderHasPieces}
                     style={{ flex: 1 }}

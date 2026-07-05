@@ -1,7 +1,7 @@
 // StyleSense AI — guarda-roupa inteligente (MVP)
 // Navegação em abas simples (sem biblioteca de router).
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -21,6 +21,7 @@ import { SudokuScreen } from './src/screens/SudokuScreen';
 import { InspirationScreen } from './src/screens/InspirationScreen';
 import { DiaryScreen } from './src/screens/DiaryScreen';
 import { SavedLooksScreen } from './src/screens/SavedLooksScreen';
+import { registerPwa } from './src/webPwa';
 
 type Tab = 'today' | 'wardrobe' | 'sudoku' | 'inspo' | 'diary' | 'saved' | 'add';
 
@@ -37,6 +38,10 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    registerPwa();
+  }, []);
 
   function openEdit(id: string) {
     setEditingId(id);

@@ -180,16 +180,18 @@ export function AddItemScreen({
     });
     if (res.canceled || !res.assets?.length) return;
 
-    const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = res.assets.map((a) => ({
-      imageUri: persistImage(a.uri),
-      name: 'Nova peça',
-      category: 'top',
-      colorId: 'preto',
-      warmth: 3,
-      formality: 3,
-      rainproof: false,
-      tags: [],
-    }));
+    const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = await Promise.all(
+      res.assets.map(async (a) => ({
+        imageUri: await persistImage(a.uri),
+        name: 'Nova peça',
+        category: 'top' as Category,
+        colorId: 'preto',
+        warmth: 3,
+        formality: 3,
+        rainproof: false,
+        tags: [],
+      })),
+    );
     addItems(datas);
 
     const n = datas.length;
@@ -200,12 +202,16 @@ export function AddItemScreen({
     );
   }
 
-  function handleSave() {
+  async function handleSave() {
     const finalName = name.trim() || CATEGORY_LABELS[category];
 
     if (editing) {
       // só re-persiste a imagem se ela foi trocada
-      const savedUri = imageChanged ? (imageUri ? persistImage(imageUri) : '') : editing.imageUri;
+      const savedUri = imageChanged
+        ? imageUri
+          ? await persistImage(imageUri)
+          : ''
+        : editing.imageUri;
       updateItem(editing.id, {
         imageUri: savedUri,
         name: finalName,
@@ -220,7 +226,7 @@ export function AddItemScreen({
       return;
     }
 
-    const savedUri = imageUri ? persistImage(imageUri) : '';
+    const savedUri = imageUri ? await persistImage(imageUri) : '';
     addItem({
       imageUri: savedUri,
       name: finalName,

@@ -10,6 +10,8 @@ const CREAM = '#F8F1ED';
 const SAGE = '#7F9168';
 
 const ASSETS = path.join(__dirname, '..', 'assets');
+const PUBLIC = path.join(__dirname, '..', 'public');
+if (!fs.existsSync(PUBLIC)) fs.mkdirSync(PUBLIC, { recursive: true });
 
 // Marca: cabide (contorno) + brilho de 4 pontas. Centralizada em ~512,512.
 function mark(stroke, accent) {
@@ -38,15 +40,22 @@ const foregroundSvg = svg(scaled(mark(CREAM, SAGE), 0.72));
 const backgroundSvg = svg(`<rect width="1024" height="1024" fill="${MAUVE}"/>`);
 const monochromeSvg = svg(scaled(mark('#FFFFFF', '#FFFFFF'), 0.72));
 
-function render(svgStr, size, outName) {
+function render(svgStr, size, dir, outName) {
   const r = new Resvg(svgStr, { fitTo: { mode: 'width', value: size } });
-  fs.writeFileSync(path.join(ASSETS, outName), r.render().asPng());
+  fs.writeFileSync(path.join(dir, outName), r.render().asPng());
   console.log('gerado:', outName, size + 'px');
 }
 
-render(iconSvg, 1024, 'icon.png');
-render(foregroundSvg, 1024, 'android-icon-foreground.png');
-render(backgroundSvg, 1024, 'android-icon-background.png');
-render(monochromeSvg, 1024, 'android-icon-monochrome.png');
-render(iconSvg, 96, 'favicon.png');
+// ícones do app (nativo)
+render(iconSvg, 1024, ASSETS, 'icon.png');
+render(foregroundSvg, 1024, ASSETS, 'android-icon-foreground.png');
+render(backgroundSvg, 1024, ASSETS, 'android-icon-background.png');
+render(monochromeSvg, 1024, ASSETS, 'android-icon-monochrome.png');
+render(iconSvg, 96, ASSETS, 'favicon.png');
+
+// ícones do PWA (web, servidos a partir de /public)
+render(iconSvg, 192, PUBLIC, 'icon-192.png');
+render(iconSvg, 512, PUBLIC, 'icon-512.png');
+render(iconSvg, 180, PUBLIC, 'apple-touch-icon.png');
+render(iconSvg, 32, PUBLIC, 'favicon.png');
 console.log('OK');

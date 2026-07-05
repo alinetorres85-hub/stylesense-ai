@@ -1,21 +1,39 @@
 // Persistência de imagens das peças.
 //
-// O seletor de imagens devolve a foto numa pasta de CACHE volátil (que o
-// sistema/Expo Go pode apagar). Aqui copiamos a foto para uma pasta
-// PERMANENTE do app (documentDirectory), para a imagem sobreviver a limpezas
-// de cache e reloads.
+// Nativo: copia a foto (que vem em cache volátil) para uma pasta PERMANENTE do
+// app (documentDirectory), retornando um file:// estável.
+// Web: converte a imagem em data URL (string), que é guardada junto dos dados
+// no IndexedDB — assim a foto sobrevive a reloads no navegador.
 
 import { Platform } from 'react-native';
-import { Directory, File, Paths } from 'expo-file-system';
 
 const FOLDER = 'wardrobe';
 
-// Copia a imagem para a pasta permanente e retorna a nova URI.
-// Em web (ou se algo falhar) mantém a URI original para não quebrar o fluxo.
-export function persistImage(sourceUri: string): string {
+function blobToDataUrl(blob: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new (globalThis as any).FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+export async function persistImage(sourceUri: string): Promise<string> {
   if (!sourceUri) return sourceUri;
-  if (Platform.OS === 'web') return sourceUri;
+
+  if (Platform.OS === 'web') {
+    try {
+      const res = await fetch(sourceUri);
+      const blob = await res.blob();
+      return await blobToDataUrl(blob);
+    } catch (e) {
+      console.warn('persistImage (web) falhou; mantendo URI original', e);
+      return sourceUri;
+    }
+  }
+
   try {
+    const { Directory, File, Paths } = require('expo-file-system');
     const dir = new Directory(Paths.document, FOLDER);
     if (!dir.exists) dir.create({ intermediates: true });
 
@@ -32,10 +50,12 @@ export function persistImage(sourceUri: string): string {
   }
 }
 
-// Apaga (best-effort) o arquivo de imagem ao excluir uma peça, evitando órfãos.
+// Apaga (best-effort) o arquivo de imagem ao excluir uma peça (só no nativo;
+// na web a imagem é uma string dentro dos dados e some junto com o registro).
 export function deleteImageSafe(uri?: string): void {
   if (!uri || Platform.OS === 'web') return;
   try {
+    const { File } = require('expo-file-system');
     const f = new File(uri);
     if (f.exists) f.delete();
   } catch {

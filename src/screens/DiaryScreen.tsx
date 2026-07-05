@@ -63,8 +63,8 @@ export function DiaryScreen() {
     if (!res.canceled && res.assets[0]) setPendingUri(res.assets[0].uri);
   }
 
-  function saveLook() {
-    const saved = persistImage(pendingUri);
+  async function saveLook() {
+    const saved = await persistImage(pendingUri);
     addDailyLook(saved, note.trim() || undefined);
     setPendingUri('');
     setNote('');
