@@ -1,0 +1,12 @@
+# Configuração de deploy do StyleSense AI (PWA web) no Netlify.
+# Usado quando você conecta o repositório ao Netlify (deploy automático a cada push).
+
+[build]
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+# App de página única: qualquer rota cai no index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
