@@ -5,6 +5,9 @@ export type Build = 'magra' | 'media' | 'curvy';
 export type HairStyle = 'curto' | 'medio' | 'longo' | 'coque';
 
 export interface AvatarConfig {
+  // Foto real do usuário (corpo inteiro) usada como avatar no provador.
+  photoUri?: string;
+  // Campos do manequim estilizado (fallback quando não há foto).
   skin: string; // hex
   hair: string; // hex
   hairStyle: HairStyle;

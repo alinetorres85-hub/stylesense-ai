@@ -1,8 +1,12 @@
-// Modal "Provador": mostra o look vestido no avatar e permite personalizar o
-// avatar (tom de pele, cor e estilo do cabelo, tipo de corpo).
+// Modal "Provador": usa uma FOTO real do usuário como avatar e mostra o look
+// escolhido junto (as peças que compõem a combinação). A foto fica salva na
+// conta (sincroniza entre aparelhos).
 
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -11,16 +15,12 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../theme';
 import { useWardrobe } from '../store';
 import { Outfit, outfitPieces } from '../types';
-import {
-  BUILDS,
-  HAIR_COLORS,
-  HAIR_STYLES,
-  SKIN_TONES,
-} from '../avatar';
-import { AvatarFigure } from './AvatarFigure';
+import { persistImage } from '../images';
+import { ItemThumb } from './ItemThumb';
 
 export function AvatarTryOn({
   visible,
@@ -34,8 +34,55 @@ export function AvatarTryOn({
   onClose: () => void;
 }) {
   const { avatar, updateAvatar } = useWardrobe();
-  const [showCustom, setShowCustom] = useState(false);
-  const empty = outfitPieces(outfit).length === 0;
+  const [busy, setBusy] = useState(false);
+  const photo = avatar.photoUri;
+  const pieces = outfitPieces(outfit);
+
+  async function useResult(res: ImagePicker.ImagePickerResult) {
+    if (res.canceled || !res.assets?.[0]) return;
+    setBusy(true);
+    try {
+      const uri = await persistImage(res.assets[0].uri);
+      updateAvatar({ photoUri: uri });
+    } catch (e) {
+      Alert.alert('Ops', 'Não consegui salvar a foto. Tente de novo.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pickFromGallery() {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria para escolher uma foto.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [3, 4],
+    });
+    await useResult(res);
+  }
+
+  async function takePhoto() {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permissão necessária', 'Autorize o acesso à câmera para tirar uma foto.');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      allowsEditing: true,
+      aspect: [3, 4],
+    });
+    await useResult(res);
+  }
+
+  function removePhoto() {
+    updateAvatar({ photoUri: undefined });
+  }
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -52,122 +99,78 @@ export function AvatarTryOn({
             contentContainerStyle={{ paddingBottom: 28, alignItems: 'center' }}
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.stage}>
-              <AvatarFigure config={avatar} outfit={outfit} width={190} />
-            </View>
-            {empty && (
-              <Text style={styles.hint}>
-                Escolha ou monte um look para vestir o avatar. ✨
-              </Text>
-            )}
-
-            <Pressable
-              style={styles.customToggle}
-              onPress={() => setShowCustom((v) => !v)}
-            >
-              <Ionicons
-                name={showCustom ? 'chevron-up' : 'color-palette-outline'}
-                size={16}
-                color={theme.colors.accent}
-              />
-              <Text style={styles.customToggleText}>
-                {showCustom ? 'Ocultar personalização' : 'Personalizar avatar'}
-              </Text>
-            </Pressable>
-
-            {showCustom && (
-              <View style={styles.custom}>
-                <Text style={styles.label}>Tom de pele</Text>
-                <View style={styles.row}>
-                  {SKIN_TONES.map((s) => (
-                    <Swatch
-                      key={s.id}
-                      hex={s.hex}
-                      selected={avatar.skin === s.hex}
-                      onPress={() => updateAvatar({ skin: s.hex })}
-                    />
-                  ))}
+            {photo ? (
+              <>
+                <View style={styles.photoWrap}>
+                  <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
+                  {busy && (
+                    <View style={styles.photoBusy}>
+                      <ActivityIndicator color="#FFF" />
+                    </View>
+                  )}
                 </View>
 
-                <Text style={styles.label}>Cor do cabelo</Text>
-                <View style={styles.row}>
-                  {HAIR_COLORS.map((c) => (
-                    <Swatch
-                      key={c.id}
-                      hex={c.hex}
-                      selected={avatar.hair === c.hex}
-                      onPress={() => updateAvatar({ hair: c.hex })}
-                    />
-                  ))}
-                </View>
+                <Text style={styles.lookLabel}>
+                  {pieces.length ? 'Seu look' : 'Escolha um look para combinar'}
+                </Text>
+                {pieces.length > 0 ? (
+                  <View style={styles.pieces}>
+                    {pieces.map((p) => (
+                      <View key={p.id} style={styles.pieceItem}>
+                        <ItemThumb item={p} style={styles.pieceThumb} rounded={theme.radius.sm} />
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.hint}>
+                    Volte e escolha (ou monte) um look para ver a combinação aqui. ✨
+                  </Text>
+                )}
 
-                <Text style={styles.label}>Estilo do cabelo</Text>
-                <View style={styles.row}>
-                  {HAIR_STYLES.map((h) => (
-                    <Chip
-                      key={h.id}
-                      label={h.label}
-                      active={avatar.hairStyle === h.id}
-                      onPress={() => updateAvatar({ hairStyle: h.id })}
-                    />
-                  ))}
+                <View style={styles.actions}>
+                  <Pressable style={styles.outlineBtn} onPress={pickFromGallery} disabled={busy}>
+                    <Ionicons name="image-outline" size={16} color={theme.colors.accent} />
+                    <Text style={styles.outlineBtnText}>Trocar foto</Text>
+                  </Pressable>
+                  <Pressable style={styles.outlineBtn} onPress={takePhoto} disabled={busy}>
+                    <Ionicons name="camera-outline" size={16} color={theme.colors.accent} />
+                    <Text style={styles.outlineBtnText}>Câmera</Text>
+                  </Pressable>
                 </View>
-
-                <Text style={styles.label}>Corpo</Text>
-                <View style={styles.row}>
-                  {BUILDS.map((b) => (
-                    <Chip
-                      key={b.id}
-                      label={b.label}
-                      active={avatar.build === b.id}
-                      onPress={() => updateAvatar({ build: b.id })}
-                    />
-                  ))}
+                <Pressable onPress={removePhoto} hitSlop={8} style={styles.removeBtn}>
+                  <Text style={styles.removeText}>Remover foto</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <View style={styles.placeholder}>
+                  {busy ? (
+                    <ActivityIndicator color={theme.colors.accent} />
+                  ) : (
+                    <Ionicons name="person-outline" size={54} color={theme.colors.muted} />
+                  )}
                 </View>
-              </View>
+                <Text style={styles.emptyTitle}>Crie seu avatar com a sua foto</Text>
+                <Text style={styles.hint}>
+                  Envie uma foto sua de corpo inteiro (de preferência em pé, fundo limpo). Ela vira
+                  seu avatar no provador — e fica salva na sua conta.
+                </Text>
+                <View style={styles.actions}>
+                  <Pressable style={styles.solidBtn} onPress={takePhoto} disabled={busy}>
+                    <Ionicons name="camera" size={18} color="#FFF" />
+                    <Text style={styles.solidBtnText}>Tirar foto</Text>
+                  </Pressable>
+                  <Pressable style={styles.solidBtn} onPress={pickFromGallery} disabled={busy}>
+                    <Ionicons name="image" size={18} color="#FFF" />
+                    <Text style={styles.solidBtnText}>Galeria</Text>
+                  </Pressable>
+                </View>
+              </>
             )}
           </ScrollView>
         </View>
       </View>
     </Modal>
-  );
-}
-
-function Swatch({
-  hex,
-  selected,
-  onPress,
-}: {
-  hex: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.swatch, { backgroundColor: hex }, selected && styles.swatchOn]}
-    >
-      {selected && <Ionicons name="checkmark" size={16} color="#FFF" />}
-    </Pressable>
-  );
-}
-
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.chip, active && styles.chipOn]}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextOn]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -196,60 +199,95 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stage: {
-    backgroundColor: theme.colors.surface,
+  photoWrap: {
+    width: 240,
+    aspectRatio: 3 / 4,
     borderRadius: theme.radius.lg,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    marginTop: 6,
+    overflow: 'hidden',
+    marginTop: 8,
+    backgroundColor: theme.colors.surfaceAlt,
     ...theme.shadow.card,
   },
+  photo: { width: '100%', height: '100%' },
+  photoBusy: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lookLabel: {
+    fontSize: theme.font.body,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginTop: 20,
+    marginBottom: 12,
+    alignSelf: 'stretch',
+    paddingHorizontal: 4,
+  },
+  pieces: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  pieceItem: {},
+  pieceThumb: { width: 74, height: 92 },
   hint: {
     fontSize: theme.font.small,
     color: theme.colors.muted,
     textAlign: 'center',
-    marginTop: 14,
+    marginTop: 8,
     paddingHorizontal: 20,
+    lineHeight: 20,
   },
-  customToggle: {
+  placeholder: {
+    width: 150,
+    height: 190,
+    borderRadius: theme.radius.lg,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    backgroundColor: theme.colors.surface,
+  },
+  emptyTitle: {
+    fontSize: theme.font.h2,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginTop: 18,
+    textAlign: 'center',
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+  },
+  solidBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.accent,
+    paddingVertical: 13,
+    paddingHorizontal: 20,
+    borderRadius: theme.radius.pill,
+    ...theme.shadow.accent,
+  },
+  solidBtnText: { color: '#FFF', fontWeight: '800', fontSize: theme.font.body },
+  outlineBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 18,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.accentSoft,
-  },
-  customToggleText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
-  custom: { alignSelf: 'stretch', marginTop: 14 },
-  label: {
-    fontSize: theme.font.small,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, alignItems: 'center' },
-  swatch: {
-    width: 34,
-    height: 34,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
     borderRadius: theme.radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: theme.colors.border,
   },
-  swatchOn: { borderColor: theme.colors.accent, borderWidth: 3 },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  chipOn: { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent },
-  chipText: { color: theme.colors.text, fontWeight: '600', fontSize: theme.font.small },
-  chipTextOn: { color: '#FFF' },
+  outlineBtnText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
+  removeBtn: { marginTop: 14 },
+  removeText: { color: theme.colors.muted, fontSize: theme.font.small, fontWeight: '600' },
 });
