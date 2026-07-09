@@ -270,10 +270,16 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
       {/* Cabeçalho com clima */}
       <View style={styles.hero}>
         <View style={styles.brandRow}>
-          <View style={styles.brandDot}>
-            <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+          <View style={styles.brandLeft}>
+            <View style={styles.brandDot}>
+              <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+            </View>
+            <Text style={styles.brandName}>StyleSense AI</Text>
           </View>
-          <Text style={styles.brandName}>StyleSense AI</Text>
+          <Pressable style={styles.avatarBtn} onPress={() => setTryOn(true)}>
+            <Ionicons name="person" size={14} color={theme.colors.accent} />
+            <Text style={styles.avatarBtnText}>Avatar</Text>
+          </Pressable>
         </View>
         <Text style={styles.greeting}>{greeting()}</Text>
         <Text style={styles.weekday}>{weekdayLabel()}</Text>
@@ -327,6 +333,12 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
             Cadastre algumas peças e eu monto sugestões diárias com base no clima e na sua agenda.
           </Text>
           <PrimaryButton label="+ Adicionar peças" onPress={onAdd} style={{ marginTop: 16 }} />
+          <PrimaryButton
+            label="🪞 Criar meu avatar"
+            variant="outline"
+            onPress={() => setTryOn(true)}
+            style={{ marginTop: 10 }}
+          />
         </View>
       ) : (
         <>
@@ -553,7 +565,23 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg },
   hero: { paddingHorizontal: 20, paddingTop: 8 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  brandLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  avatarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentSoft,
+  },
+  avatarBtnText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
   brandDot: {
     width: 24,
     height: 24,
