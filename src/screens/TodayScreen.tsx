@@ -31,6 +31,7 @@ import { PiecePicker } from '../components/PiecePicker';
 import { WeekPlanner } from '../components/WeekPlanner';
 import { AvatarTryOn } from '../components/AvatarTryOn';
 import { useWardrobe } from '../store';
+import { useAuth } from '../auth';
 import { Weather, fallbackWeather, getWeather } from '../weather';
 import { suggestOutfit, swapSlot } from '../suggestion';
 
@@ -107,6 +108,7 @@ function weekdayLabel(): string {
 
 export function TodayScreen({ onAdd }: { onAdd: () => void }) {
   const { items, savedOutfits, markOutfitWorn, saveOutfit } = useWardrobe();
+  const { signOut } = useAuth();
   const [weather, setWeather] = useState<Weather | null>(null);
   const [weatherError, setWeatherError] = useState<string | null>(null);
   const [loadingWeather, setLoadingWeather] = useState(true);
@@ -276,10 +278,15 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
             </View>
             <Text style={styles.brandName}>StyleSense AI</Text>
           </View>
-          <Pressable style={styles.avatarBtn} onPress={() => setTryOn(true)}>
-            <Ionicons name="person" size={14} color={theme.colors.accent} />
-            <Text style={styles.avatarBtnText}>Avatar</Text>
-          </Pressable>
+          <View style={styles.headerBtns}>
+            <Pressable style={styles.avatarBtn} onPress={() => setTryOn(true)}>
+              <Ionicons name="person" size={14} color={theme.colors.accent} />
+              <Text style={styles.avatarBtnText}>Avatar</Text>
+            </Pressable>
+            <Pressable style={styles.logoutBtn} onPress={signOut} hitSlop={8}>
+              <Ionicons name="log-out-outline" size={18} color={theme.colors.muted} />
+            </Pressable>
+          </View>
         </View>
         <Text style={styles.greeting}>{greeting()}</Text>
         <Text style={styles.weekday}>{weekdayLabel()}</Text>
@@ -572,6 +579,15 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   brandLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBtns: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoutBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarBtn: {
     flexDirection: 'row',
     alignItems: 'center',

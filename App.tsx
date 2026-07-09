@@ -24,6 +24,8 @@ import { SudokuScreen } from './src/screens/SudokuScreen';
 import { InspirationScreen } from './src/screens/InspirationScreen';
 import { DiaryScreen } from './src/screens/DiaryScreen';
 import { SavedLooksScreen } from './src/screens/SavedLooksScreen';
+import { AuthScreen } from './src/screens/AuthScreen';
+import { AuthProvider, useAuth } from './src/auth';
 import { registerPwa } from './src/webPwa';
 
 // Aplica a fonte moderna globalmente, antes do primeiro render.
@@ -42,9 +44,8 @@ const TABS: { id: Tab; label: string; icon: IonName; iconActive: IonName }[] = [
   { id: 'add', label: 'Novo', icon: 'add', iconActive: 'add' },
 ];
 
+// Raiz do app: carrega fontes, depois decide entre login e app conforme a sessão.
 export default function App() {
-  const [tab, setTab] = useState<Tab>('today');
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [fontsLoaded] = useFonts(fontMap);
 
   useEffect(() => {
@@ -54,6 +55,36 @@ export default function App() {
   if (!fontsLoaded) {
     return <View style={styles.splash} />;
   }
+
+  return (
+    <AuthProvider>
+      <Root />
+    </AuthProvider>
+  );
+}
+
+// Porteira de autenticação.
+function Root() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <View style={styles.splash} />;
+  }
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <AuthScreen />
+      </SafeAreaView>
+    );
+  }
+  // Remonta ao trocar de usuário (recarrega os dados da conta).
+  return <MainApp key={user.id} />;
+}
+
+function MainApp() {
+  const [tab, setTab] = useState<Tab>('today');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   function openEdit(id: string) {
     setEditingId(id);

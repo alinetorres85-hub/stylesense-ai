@@ -1,22 +1,22 @@
-// Camada de persistência local (local-first).
-// Nativo: AsyncStorage. Web: IndexedDB (via kv) para itens/looks/diário, porque
-// nesses casos as fotos ficam embutidas como data URL e não cabem no localStorage.
+// Camada de persistência. Com contas ativadas, os dados do guarda-roupa ficam
+// na nuvem (Supabase, por usuário) — via cloudGet/cloudSet, que espelham a API
+// do kv. A chave da API da Anthropic continua local (é um segredo do aparelho).
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ClothingItem, DailyLook, SavedOutfit } from './types';
 import { AvatarConfig, DEFAULT_AVATAR } from './avatar';
-import { kvGet, kvSet } from './kv';
+import { cloudGet, cloudSet } from './cloud';
 
-const ITEMS_KEY = '@stylesense/items';
-const SAVED_KEY = '@stylesense/savedOutfits';
-const DAILY_KEY = '@stylesense/dailyLooks';
+const ITEMS_KEY = 'items';
+const SAVED_KEY = 'savedOutfits';
+const DAILY_KEY = 'dailyLooks';
 const APIKEY_KEY = '@stylesense/anthropicKey';
-const WEEKPLAN_KEY = '@stylesense/weekPlan';
-const AVATAR_KEY = '@stylesense/avatar';
+const WEEKPLAN_KEY = 'weekPlan';
+const AVATAR_KEY = 'avatar';
 
 async function loadArray<T>(key: string, label: string): Promise<T[]> {
   try {
-    const raw = await kvGet(key);
+    const raw = await cloudGet(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -28,7 +28,7 @@ async function loadArray<T>(key: string, label: string): Promise<T[]> {
 
 async function saveJson(key: string, value: unknown, label: string): Promise<void> {
   try {
-    await kvSet(key, JSON.stringify(value));
+    await cloudSet(key, JSON.stringify(value));
   } catch (e) {
     console.warn(`Falha ao salvar ${label}`, e);
   }
@@ -55,10 +55,10 @@ export function saveDailyLooks(looks: DailyLook[]): Promise<void> {
   return saveJson(DAILY_KEY, looks, 'looks do dia');
 }
 
-// Plano da semana e chave de API são pequenos — AsyncStorage/localStorage serve.
+// Plano da semana: também sincroniza na nuvem (por usuário).
 export async function loadWeekPlan(): Promise<Record<string, string>> {
   try {
-    const raw = await AsyncStorage.getItem(WEEKPLAN_KEY);
+    const raw = await cloudGet(WEEKPLAN_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -70,7 +70,7 @@ export async function loadWeekPlan(): Promise<Record<string, string>> {
 
 export async function saveWeekPlan(plan: Record<string, string>): Promise<void> {
   try {
-    await AsyncStorage.setItem(WEEKPLAN_KEY, JSON.stringify(plan));
+    await cloudSet(WEEKPLAN_KEY, JSON.stringify(plan));
   } catch (e) {
     console.warn('Falha ao salvar o plano da semana', e);
   }
@@ -92,10 +92,10 @@ export async function saveApiKey(key: string): Promise<void> {
   }
 }
 
-// Avatar do provador (pequeno, sem imagens) — via kv para funcionar no web.
+// Avatar do provador — sincroniza na nuvem (por usuário).
 export async function loadAvatar(): Promise<AvatarConfig> {
   try {
-    const raw = await kvGet(AVATAR_KEY);
+    const raw = await cloudGet(AVATAR_KEY);
     if (!raw) return DEFAULT_AVATAR;
     const parsed = JSON.parse(raw);
     return { ...DEFAULT_AVATAR, ...parsed };
