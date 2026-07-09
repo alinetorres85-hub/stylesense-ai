@@ -24,7 +24,7 @@ export function registerPwa(): void {
     ensure('meta[name="theme-color"]', () => {
       const m = doc.createElement('meta');
       m.name = 'theme-color';
-      m.content = '#A86E9B';
+      m.content = '#9E5A8E';
       return m;
     });
     ensure('meta[name="apple-mobile-web-app-capable"]', () => {

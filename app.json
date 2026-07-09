@@ -19,7 +19,8 @@
           "photosPermission": "Permita o acesso às fotos para cadastrar suas roupas.",
           "cameraPermission": "Permita o acesso à câmera para fotografar suas roupas."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": true,
@@ -31,7 +32,7 @@
       "package": "com.aline.stylesense",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#F2E7F1",
+        "backgroundColor": "#9E5A8E",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -44,8 +45,8 @@
       "output": "single",
       "name": "StyleSense AI",
       "shortName": "StyleSense",
-      "themeColor": "#A86E9B",
-      "backgroundColor": "#F8F1ED",
+      "themeColor": "#9E5A8E",
+      "backgroundColor": "#FAF7F5",
       "display": "standalone",
       "lang": "pt-BR"
     }

@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import {
   CATEGORY_LABELS,
@@ -266,7 +267,13 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 110 }}>
       {/* Cabeçalho com clima */}
       <View style={styles.hero}>
-        <Text style={styles.greeting}>{greeting()} 👋</Text>
+        <View style={styles.brandRow}>
+          <View style={styles.brandDot}>
+            <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+          </View>
+          <Text style={styles.brandName}>StyleSense AI</Text>
+        </View>
+        <Text style={styles.greeting}>{greeting()}</Text>
         <Text style={styles.weekday}>{weekdayLabel()}</Text>
 
         <View style={styles.weatherCard}>
@@ -534,7 +541,27 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg },
   hero: { paddingHorizontal: 20, paddingTop: 8 },
-  greeting: { fontSize: theme.font.title, fontWeight: '700', color: theme.colors.text },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  brandDot: {
+    width: 24,
+    height: 24,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: theme.colors.accentDeep,
+    letterSpacing: 0.2,
+  },
+  greeting: {
+    fontSize: theme.font.display,
+    fontWeight: '800',
+    color: theme.colors.text,
+    letterSpacing: -0.8,
+  },
   weekday: { fontSize: 15, color: theme.colors.muted, marginTop: 2, textTransform: 'capitalize' },
   weatherCard: {
     flexDirection: 'row',

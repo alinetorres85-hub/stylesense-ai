@@ -1,43 +1,56 @@
-// Paleta e tokens de estilo — pastel chique: dusty rose + sage sobre creme
-// quente, cantos arredondados e sombras suaves amalvadas.
+// Paleta e tokens de estilo — rebrand moderno: mauve rico + sage sobre um
+// off-white limpo, tinta escura pra contraste, cantos generosos e sombras suaves.
+
+import { Fonts } from './fonts';
 
 export const theme = {
   colors: {
-    bg: '#F8F1ED',
+    bg: '#FAF7F5',
     surface: '#FFFFFF',
-    surfaceAlt: '#F2E8E8',
-    text: '#43363D',
-    muted: '#9C8E92',
-    border: '#ECE0DF',
-    accent: '#A86E9B', // rosa malva (primário)
-    accentSoft: '#F2E7F1',
-    accent2: '#7F9168', // sage (secundário)
+    surfaceAlt: '#F4EDF1',
+    text: '#211B1F', // tinta escura (mais contraste, mais atual)
+    muted: '#8B8189',
+    border: '#EDE3E9',
+    accent: '#9E5A8E', // mauve rico (primário)
+    accentSoft: '#F5E8F2',
+    accentDeep: '#7C3F6F', // mauve profundo (wordmark / estados pressionados)
+    accent2: '#6F8557', // sage (secundário)
     accent2Soft: '#E9EFE1',
-    success: '#7BA188',
-    danger: '#C56E72',
-    overlay: 'rgba(67,54,61,0.45)',
+    success: '#5E9B79',
+    danger: '#C7595F',
+    overlay: 'rgba(33,27,31,0.5)',
   },
   radius: {
-    sm: 10,
-    md: 16,
-    lg: 24,
+    sm: 12,
+    md: 18,
+    lg: 26,
+    xl: 32,
     pill: 999,
   },
   spacing: (n: number) => n * 4,
+  fonts: Fonts,
   font: {
-    title: 30,
-    h2: 21,
+    display: 34,
+    title: 27,
+    h2: 20,
     body: 15,
     small: 13,
     tiny: 11,
   },
   shadow: {
     card: {
-      shadowColor: '#7A5A66',
-      shadowOpacity: 0.12,
-      shadowRadius: 16,
-      shadowOffset: { width: 0, height: 6 },
+      shadowColor: '#6E4A63',
+      shadowOpacity: 0.1,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 8 },
       elevation: 3,
+    },
+    accent: {
+      shadowColor: '#9E5A8E',
+      shadowOpacity: 0.35,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 6,
     },
   },
 };

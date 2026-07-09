@@ -5,22 +5,34 @@ const fs = require('fs');
 const path = require('path');
 const { Resvg } = require('@resvg/resvg-js');
 
-const MAUVE = '#A86E9B';
-const CREAM = '#F8F1ED';
-const SAGE = '#7F9168';
+const MAUVE = '#9E5A8E';
+const DEEP = '#6E2F62';
+const CREAM = '#FBF6FA';
+const SAGE = '#B7E29A';
 
 const ASSETS = path.join(__dirname, '..', 'assets');
 const PUBLIC = path.join(__dirname, '..', 'public');
 if (!fs.existsSync(PUBLIC)) fs.mkdirSync(PUBLIC, { recursive: true });
 
+// Fundo em gradiente diagonal (mauve → mauve profundo) — visual moderno.
+const gradientDefs = `
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${MAUVE}"/>
+      <stop offset="1" stop-color="${DEEP}"/>
+    </linearGradient>
+  </defs>`;
+const gradientBg = `${gradientDefs}<rect width="1024" height="1024" fill="url(#bg)"/>`;
+
 // Marca: cabide (contorno) + brilho de 4 pontas. Centralizada em ~512,512.
 function mark(stroke, accent) {
   return `
     <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M512 452 L512 402 a22 22 0 1 0 -22 22" stroke="${stroke}" stroke-width="22"/>
-      <path d="M512 452 L344 604 Q332 615 350 617 L674 617 Q692 615 680 604 Z" stroke="${stroke}" stroke-width="22"/>
+      <path d="M512 452 L512 402 a22 22 0 1 0 -22 22" stroke="${stroke}" stroke-width="26"/>
+      <path d="M512 452 L344 604 Q332 615 350 617 L674 617 Q692 615 680 604 Z" stroke="${stroke}" stroke-width="26"/>
     </g>
-    <path d="M690 402 L701 431 L730 442 L701 453 L690 482 L679 453 L650 442 L679 431 Z" fill="${accent}"/>
+    <path d="M690 398 L703 431 L736 444 L703 457 L690 490 L677 457 L644 444 L677 431 Z" fill="${accent}"/>
+    <path d="M356 372 L364 393 L385 401 L364 409 L356 430 L348 409 L327 401 L348 393 Z" fill="${accent}" opacity="0.85"/>
   `;
 }
 
@@ -31,13 +43,13 @@ function svg(body) {
   return `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
 }
 
-// Ícone principal (iOS + geral): fundo malva cheio + marca creme/sage.
-const iconSvg = svg(`<rect width="1024" height="1024" fill="${MAUVE}"/>${mark(CREAM, SAGE)}`);
+// Ícone principal (iOS + geral): fundo em gradiente + marca creme/sage.
+const iconSvg = svg(`${gradientBg}${mark(CREAM, SAGE)}`);
 
 // Adaptativo Android: foreground transparente (marca reduzida p/ zona segura),
-// background malva sólido, monochrome branco.
+// background em gradiente, monochrome branco.
 const foregroundSvg = svg(scaled(mark(CREAM, SAGE), 0.72));
-const backgroundSvg = svg(`<rect width="1024" height="1024" fill="${MAUVE}"/>`);
+const backgroundSvg = svg(gradientBg);
 const monochromeSvg = svg(scaled(mark('#FFFFFF', '#FFFFFF'), 0.72));
 
 function render(svgStr, size, dir, outName) {
