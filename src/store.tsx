@@ -17,16 +17,19 @@ export interface SaveOutfitMeta {
   seasons?: Season[];
 }
 import {
+  loadAvatar,
   loadDailyLooks,
   loadItems,
   loadSavedOutfits,
   loadWeekPlan,
   newId,
+  saveAvatar,
   saveDailyLooks,
   saveItems,
   saveSavedOutfits,
   saveWeekPlan,
 } from './storage';
+import { AvatarConfig, DEFAULT_AVATAR } from './avatar';
 import { deleteImageSafe } from './images';
 
 interface WardrobeContextValue {
@@ -47,6 +50,8 @@ interface WardrobeContextValue {
   removeDailyLook: (id: string) => void;
   weekPlan: Record<string, string>; // dateKey (YYYY-MM-DD) → savedOutfitId
   setPlanLook: (dateKey: string, savedOutfitId: string | null) => void;
+  avatar: AvatarConfig;
+  updateAvatar: (patch: Partial<AvatarConfig>) => void;
 }
 
 const WardrobeContext = createContext<WardrobeContextValue | null>(null);
@@ -56,20 +61,23 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   const [savedOutfits, setSavedOutfits] = useState<SavedOutfit[]>([]);
   const [dailyLooks, setDailyLooks] = useState<DailyLook[]>([]);
   const [weekPlan, setWeekPlan] = useState<Record<string, string>>({});
+  const [avatar, setAvatar] = useState<AvatarConfig>(DEFAULT_AVATAR);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      const [its, saved, daily, plan] = await Promise.all([
+      const [its, saved, daily, plan, av] = await Promise.all([
         loadItems(),
         loadSavedOutfits(),
         loadDailyLooks(),
         loadWeekPlan(),
+        loadAvatar(),
       ]);
       setItems(its);
       setSavedOutfits(saved);
       setDailyLooks(daily);
       setWeekPlan(plan);
+      setAvatar(av);
       setLoading(false);
     })();
   }, []);
@@ -87,6 +95,9 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading) saveWeekPlan(weekPlan);
   }, [weekPlan, loading]);
+  useEffect(() => {
+    if (!loading) saveAvatar(avatar);
+  }, [avatar, loading]);
 
   const addItem = useCallback<WardrobeContextValue['addItem']>((data) => {
     const item: ClothingItem = {
@@ -183,6 +194,10 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateAvatar = useCallback<WardrobeContextValue['updateAvatar']>((patch) => {
+    setAvatar((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   return (
     <WardrobeContext.Provider
       value={{
@@ -203,6 +218,8 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
         removeDailyLook,
         weekPlan,
         setPlanLook,
+        avatar,
+        updateAvatar,
       }}
     >
       {children}

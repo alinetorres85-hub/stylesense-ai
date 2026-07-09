@@ -99,6 +99,36 @@ export interface Outfit {
 // Slots de peça única (não inclui extraTops, que é uma lista).
 export type OutfitSlot = 'top' | 'bottom' | 'dress' | 'outerwear' | 'shoes' | 'accessory';
 
+// Monta um Outfit a partir de uma lista de peças (distribui por slot; tops
+// extras viram camadas). Inverso prático de outfitPieces.
+export function outfitFromPieces(pieces: ClothingItem[]): Outfit {
+  const o: Outfit = {};
+  for (const p of pieces) {
+    switch (p.category) {
+      case 'top':
+        if (!o.top) o.top = p;
+        else o.extraTops = [...(o.extraTops ?? []), p];
+        break;
+      case 'bottom':
+        o.bottom = p;
+        break;
+      case 'dress':
+        o.dress = p;
+        break;
+      case 'outerwear':
+        o.outerwear = p;
+        break;
+      case 'shoes':
+        o.shoes = p;
+        break;
+      case 'accessory':
+        o.accessory = p;
+        break;
+    }
+  }
+  return o;
+}
+
 // Todas as peças de um look, em ordem, incluindo as camadas extras.
 export function outfitPieces(o: Outfit): ClothingItem[] {
   const list: (ClothingItem | undefined)[] = [

@@ -4,6 +4,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ClothingItem, DailyLook, SavedOutfit } from './types';
+import { AvatarConfig, DEFAULT_AVATAR } from './avatar';
 import { kvGet, kvSet } from './kv';
 
 const ITEMS_KEY = '@stylesense/items';
@@ -11,6 +12,7 @@ const SAVED_KEY = '@stylesense/savedOutfits';
 const DAILY_KEY = '@stylesense/dailyLooks';
 const APIKEY_KEY = '@stylesense/anthropicKey';
 const WEEKPLAN_KEY = '@stylesense/weekPlan';
+const AVATAR_KEY = '@stylesense/avatar';
 
 async function loadArray<T>(key: string, label: string): Promise<T[]> {
   try {
@@ -88,6 +90,22 @@ export async function saveApiKey(key: string): Promise<void> {
   } catch (e) {
     console.warn('Falha ao salvar a chave de API', e);
   }
+}
+
+// Avatar do provador (pequeno, sem imagens) — via kv para funcionar no web.
+export async function loadAvatar(): Promise<AvatarConfig> {
+  try {
+    const raw = await kvGet(AVATAR_KEY);
+    if (!raw) return DEFAULT_AVATAR;
+    const parsed = JSON.parse(raw);
+    return { ...DEFAULT_AVATAR, ...parsed };
+  } catch {
+    return DEFAULT_AVATAR;
+  }
+}
+
+export function saveAvatar(config: AvatarConfig): Promise<void> {
+  return saveJson(AVATAR_KEY, config, 'avatar');
 }
 
 export function newId(): string {

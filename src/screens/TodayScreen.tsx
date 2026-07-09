@@ -29,6 +29,7 @@ import { Chip, PrimaryButton } from '../components/ui';
 import { ItemThumb } from '../components/ItemThumb';
 import { PiecePicker } from '../components/PiecePicker';
 import { WeekPlanner } from '../components/WeekPlanner';
+import { AvatarTryOn } from '../components/AvatarTryOn';
 import { useWardrobe } from '../store';
 import { Weather, fallbackWeather, getWeather } from '../weather';
 import { suggestOutfit, swapSlot } from '../suggestion';
@@ -119,6 +120,7 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
   const [pickerSlot, setPickerSlot] = useState<OutfitSlot | null>(null);
   // -1 = adicionar nova camada de cima; >=0 = editar a camada nesse índice
   const [extraTopPicker, setExtraTopPicker] = useState<number | null>(null);
+  const [tryOn, setTryOn] = useState(false);
 
   const fetchWeather = useCallback(async () => {
     setLoadingWeather(true);
@@ -462,15 +464,23 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
           )}
 
           {(filledSlots.length > 0 || (outfit.extraTops?.length ?? 0) > 0) && (
-            <View style={styles.actions}>
-              <PrimaryButton label="👍 Vou usar este" onPress={handleWear} style={{ flex: 1 }} />
+            <>
+              <View style={styles.actions}>
+                <PrimaryButton label="👍 Vou usar este" onPress={handleWear} style={{ flex: 1 }} />
+                <PrimaryButton
+                  label={justSaved ? '❤️ Salvo' : '♡ Salvar'}
+                  variant={justSaved ? 'solid' : 'outline'}
+                  onPress={handleSaveOutfit}
+                  style={{ flex: 1 }}
+                />
+              </View>
               <PrimaryButton
-                label={justSaved ? '❤️ Salvo' : '♡ Salvar'}
-                variant={justSaved ? 'solid' : 'outline'}
-                onPress={handleSaveOutfit}
-                style={{ flex: 1 }}
+                label="🪞 Provar no avatar"
+                variant="outline"
+                onPress={() => setTryOn(true)}
+                style={{ marginTop: 10 }}
               />
-            </View>
+            </>
           )}
 
           {justSaved && (
@@ -534,6 +544,8 @@ export function TodayScreen({ onAdd }: { onAdd: () => void }) {
           onClose={() => setExtraTopPicker(null)}
         />
       )}
+
+      <AvatarTryOn visible={tryOn} outfit={outfit} onClose={() => setTryOn(false)} />
     </ScrollView>
   );
 }

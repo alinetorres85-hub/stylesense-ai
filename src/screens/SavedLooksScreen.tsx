@@ -17,15 +17,18 @@ import {
   ClothingItem,
   OCCASIONS,
   Occasion,
+  Outfit,
   SEASONS,
   SavedOutfit,
   Season,
+  outfitFromPieces,
   savedOccasions,
   savedSeasons,
 } from '../types';
 import { Chip, PrimaryButton } from '../components/ui';
 import { ItemThumb } from '../components/ItemThumb';
 import { PiecePicker } from '../components/PiecePicker';
+import { AvatarTryOn } from '../components/AvatarTryOn';
 import { useWardrobe } from '../store';
 
 const CATEGORIES: Category[] = ['top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
@@ -63,6 +66,7 @@ export function SavedLooksScreen({ onAdd }: { onAdd: () => void }) {
   const [editNote, setEditNote] = useState('');
   const [editPieces, setEditPieces] = useState<ClothingItem[]>([]);
   const [addCategory, setAddCategory] = useState<Category | null>(null);
+  const [tryOnOutfit, setTryOnOutfit] = useState<Outfit | null>(null);
 
   function openEditor(s: SavedOutfit) {
     setEditing(s);
@@ -195,6 +199,9 @@ export function SavedLooksScreen({ onAdd }: { onAdd: () => void }) {
                   <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
                 </View>
                 <View style={styles.cardActions}>
+                  <Pressable onPress={() => setTryOnOutfit(outfitFromPieces(pieces))} hitSlop={8}>
+                    <Text style={styles.tryOn}>🪞 provar</Text>
+                  </Pressable>
                   <Pressable onPress={() => openEditor(item)} hitSlop={8}>
                     <Text style={styles.edit}>✎ editar</Text>
                   </Pressable>
@@ -214,6 +221,12 @@ export function SavedLooksScreen({ onAdd }: { onAdd: () => void }) {
             </View>
           );
         }}
+      />
+
+      <AvatarTryOn
+        visible={!!tryOnOutfit}
+        outfit={tryOnOutfit ?? {}}
+        onClose={() => setTryOnOutfit(null)}
       />
 
       <Modal
@@ -351,6 +364,7 @@ const styles = StyleSheet.create({
   badgeSeasonText: { fontSize: 12, color: theme.colors.accent2, fontWeight: '700' },
   cardDate: { fontSize: 12, color: theme.colors.muted },
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  tryOn: { fontSize: 13, color: theme.colors.accent2, fontWeight: '700' },
   edit: { fontSize: 13, color: theme.colors.accent, fontWeight: '700' },
   remove: { fontSize: 16, color: theme.colors.muted, paddingHorizontal: 4 },
   overlay: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: 'flex-end' },
