@@ -138,15 +138,14 @@ export function AvatarTryOn({
 
   async function generateAI() {
     if (!photo) return;
+    setAiError(null);
     if (!aiGarment) {
-      Alert.alert(
-        'Escolha uma peça primeiro',
-        'Toque no slot "Parte de cima" (ou "Vestido") e escolha uma peça. A IA veste essa peça em você.',
+      setAiError(
+        'A IA só veste "Parte de cima" ou "Vestido". Escolha uma blusa/camiseta ou um vestido — calças e calçados ela ainda não veste.',
       );
       return;
     }
     setAiBusy(true);
-    setAiError(null);
     try {
       const [human, garment] = await Promise.all([shrink(photo), shrink(aiGarment.imageUri)]);
       const { data, error } = await supabase.functions.invoke('tryon', {
@@ -413,7 +412,7 @@ export function AvatarTryOn({
               <Text style={styles.aiHint}>
                 {aiGarment
                   ? `A IA veste "${(tryOutfit.dress ?? tryOutfit.top)!.name}" em você — ~15s, 1 crédito.`
-                  : 'Escolha uma "Parte de cima" ou "Vestido" — é o que a IA veste em você.'}
+                  : 'A IA veste só "Parte de cima" ou "Vestido" (calça e calçado ainda não).'}
               </Text>
             </View>
           )}
