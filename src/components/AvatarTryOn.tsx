@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -21,6 +22,51 @@ import { useWardrobe } from '../store';
 import { Outfit, outfitPieces } from '../types';
 import { persistImage } from '../images';
 import { ItemThumb } from './ItemThumb';
+
+// Na web, o expo-image-picker é instável (às vezes não resolve a escolha).
+// Usamos um <input type="file"> nativo do navegador — devolve a foto como
+// data URL direto (confiável e sem depender de fetch de blob).
+function pickImageWeb(capture?: 'user' | 'environment'): Promise<string | null> {
+  return new Promise((resolve) => {
+    const doc: any = (globalThis as any).document;
+    if (!doc) return resolve(null);
+    const input = doc.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    if (capture) input.capture = capture;
+    input.style.position = 'fixed';
+    input.style.left = '-10000px';
+    let settled = false;
+    const finish = (val: string | null) => {
+      if (settled) return;
+      settled = true;
+      try {
+        doc.body.removeChild(input);
+      } catch {}
+      resolve(val);
+    };
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) return finish(null);
+      const reader = new (globalThis as any).FileReader();
+      reader.onload = () => finish(reader.result as string);
+      reader.onerror = () => finish(null);
+      reader.readAsDataURL(file);
+    };
+    // Cancelamento: navegadores modernos disparam 'cancel'; como reforço,
+    // ao voltar o foco pra janela sem arquivo, encerramos.
+    input.oncancel = () => finish(null);
+    const onFocus = () => {
+      setTimeout(() => {
+        if (!input.files || !input.files.length) finish(null);
+      }, 800);
+      (globalThis as any).removeEventListener?.('focus', onFocus);
+    };
+    (globalThis as any).addEventListener?.('focus', onFocus);
+    doc.body.appendChild(input);
+    input.click();
+  });
+}
 
 export function AvatarTryOn({
   visible,
@@ -38,46 +84,45 @@ export function AvatarTryOn({
   const photo = avatar.photoUri;
   const pieces = outfitPieces(outfit);
 
-  async function useResult(res: ImagePicker.ImagePickerResult) {
-    if (res.canceled || !res.assets?.[0]) return;
-    setBusy(true);
+  async function addPhoto(fromCamera: boolean) {
     try {
-      const uri = await persistImage(res.assets[0].uri);
-      updateAvatar({ photoUri: uri });
+      let dataUrl: string | null = null;
+
+      if (Platform.OS === 'web') {
+        dataUrl = await pickImageWeb(fromCamera ? 'user' : undefined);
+        if (!dataUrl) return; // cancelou
+        setBusy(true);
+      } else {
+        const perm = fromCamera
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert(
+            'Permissão necessária',
+            fromCamera
+              ? 'Autorize o acesso à câmera para tirar uma foto.'
+              : 'Autorize o acesso à galeria para escolher uma foto.',
+          );
+          return;
+        }
+        const opts = { quality: 0.7, allowsEditing: true, aspect: [3, 4] as [number, number], base64: true };
+        const res = fromCamera
+          ? await ImagePicker.launchCameraAsync(opts)
+          : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], ...opts });
+        if (res.canceled || !res.assets?.[0]) return;
+        setBusy(true);
+        const a = res.assets[0];
+        dataUrl = a.base64
+          ? `data:${a.mimeType ?? 'image/jpeg'};base64,${a.base64}`
+          : await persistImage(a.uri);
+      }
+
+      updateAvatar({ photoUri: dataUrl });
     } catch (e) {
-      Alert.alert('Ops', 'Não consegui salvar a foto. Tente de novo.');
+      Alert.alert('Ops', 'Não consegui usar essa foto. Tente outra.');
     } finally {
       setBusy(false);
     }
-  }
-
-  async function pickFromGallery() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria para escolher uma foto.');
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [3, 4],
-    });
-    await useResult(res);
-  }
-
-  async function takePhoto() {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso à câmera para tirar uma foto.');
-      return;
-    }
-    const res = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [3, 4],
-    });
-    await useResult(res);
   }
 
   function removePhoto() {
@@ -128,11 +173,11 @@ export function AvatarTryOn({
                 )}
 
                 <View style={styles.actions}>
-                  <Pressable style={styles.outlineBtn} onPress={pickFromGallery} disabled={busy}>
+                  <Pressable style={styles.outlineBtn} onPress={() => addPhoto(false)} disabled={busy}>
                     <Ionicons name="image-outline" size={16} color={theme.colors.accent} />
                     <Text style={styles.outlineBtnText}>Trocar foto</Text>
                   </Pressable>
-                  <Pressable style={styles.outlineBtn} onPress={takePhoto} disabled={busy}>
+                  <Pressable style={styles.outlineBtn} onPress={() => addPhoto(true)} disabled={busy}>
                     <Ionicons name="camera-outline" size={16} color={theme.colors.accent} />
                     <Text style={styles.outlineBtnText}>Câmera</Text>
                   </Pressable>
@@ -156,11 +201,11 @@ export function AvatarTryOn({
                   seu avatar no provador — e fica salva na sua conta.
                 </Text>
                 <View style={styles.actions}>
-                  <Pressable style={styles.solidBtn} onPress={takePhoto} disabled={busy}>
+                  <Pressable style={styles.solidBtn} onPress={() => addPhoto(true)} disabled={busy}>
                     <Ionicons name="camera" size={18} color="#FFF" />
                     <Text style={styles.solidBtnText}>Tirar foto</Text>
                   </Pressable>
-                  <Pressable style={styles.solidBtn} onPress={pickFromGallery} disabled={busy}>
+                  <Pressable style={styles.solidBtn} onPress={() => addPhoto(false)} disabled={busy}>
                     <Ionicons name="image" size={18} color="#FFF" />
                     <Text style={styles.solidBtnText}>Galeria</Text>
                   </Pressable>
