@@ -235,7 +235,8 @@ export function AvatarTryOn({
           </View>
 
           <ScrollView
-            contentContainerStyle={{ paddingBottom: 28 }}
+            style={{ flexShrink: 1 }}
+            contentContainerStyle={{ paddingBottom: 20 }}
             showsVerticalScrollIndicator={false}
           >
             {!photo ? (
@@ -395,22 +396,27 @@ export function AvatarTryOn({
                         );
                       })}
                     </View>
-
-                    {aiError && <Text style={styles.aiError}>⚠️ {aiError}</Text>}
-                    <Pressable style={styles.aiBtn} onPress={generateAI}>
-                      <Ionicons name="sparkles" size={18} color="#FFF" />
-                      <Text style={styles.aiBtnText}>Provar com IA</Text>
-                    </Pressable>
-                    <Text style={styles.aiHint}>
-                      {aiGarment
-                        ? 'A IA veste a parte de cima (ou vestido) em você — leva ~15s e usa 1 crédito.'
-                        : 'Escolha uma parte de cima ou um vestido para provar com IA.'}
-                    </Text>
                   </>
                 )}
               </>
             )}
           </ScrollView>
+
+          {/* Rodapé fixo: botão "Provar com IA" sempre visível (slots ou seletor). */}
+          {photo && hasClothes && !aiBusy && !aiResult && (
+            <View style={styles.footer}>
+              {aiError && <Text style={styles.aiError}>⚠️ {aiError}</Text>}
+              <Pressable style={styles.aiBtn} onPress={generateAI}>
+                <Ionicons name="sparkles" size={18} color="#FFF" />
+                <Text style={styles.aiBtnText}>Provar com IA</Text>
+              </Pressable>
+              <Text style={styles.aiHint}>
+                {aiGarment
+                  ? `A IA veste "${(tryOutfit.dress ?? tryOutfit.top)!.name}" em você — ~15s, 1 crédito.`
+                  : 'Escolha uma "Parte de cima" ou "Vestido" — é o que a IA veste em você.'}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -579,6 +585,12 @@ const styles = StyleSheet.create({
     ...theme.shadow.accent,
   },
   solidBtnText: { color: '#FFF', fontWeight: '800', fontSize: theme.font.body },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
   aiBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -587,7 +599,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accent,
     paddingVertical: 15,
     borderRadius: theme.radius.pill,
-    marginTop: 22,
+    marginTop: 12,
     ...theme.shadow.accent,
   },
   aiBtnDisabled: { backgroundColor: theme.colors.muted, opacity: 0.5 },
