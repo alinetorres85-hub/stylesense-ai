@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../theme';
 import { useWardrobe } from '../store';
-import { CATEGORY_LABELS, Category, ClothingItem, Outfit, OutfitSlot } from '../types';
+import { CATEGORY_LABELS, Category, ClothingItem, Outfit, OutfitSlot, outfitPieces } from '../types';
 import { persistImage } from '../images';
 import { supabase } from '../supabaseClient';
 import { ItemThumb } from './ItemThumb';
@@ -113,14 +113,14 @@ export function AvatarTryOn({
   title?: string;
   onClose: () => void;
 }) {
-  const { avatar, updateAvatar, items } = useWardrobe();
+  const { avatar, updateAvatar, items, saveOutfit } = useWardrobe();
   const [busy, setBusy] = useState(false);
   const [tryOutfit, setTryOutfit] = useState<Outfit>(outfit);
   const [pickerCat, setPickerCat] = useState<Category | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [lastSlot, setLastSlot] = useState<OutfitSlot | null>(null);
+  const [savedMsg, setSavedMsg] = useState(false);
   const photo = avatar.photoUri;
 
   // Ao abrir, começa do look recebido (sugestão/look salvo) e deixa editar.
@@ -130,68 +130,78 @@ export function AvatarTryOn({
       setPickerCat(null);
       setAiResult(null);
       setAiError(null);
-      setLastSlot(null);
+      setSavedMsg(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Categoria que a IA entende por slot (calçado/acessório não têm try-on).
-  const AI_CATEGORY: Partial<Record<OutfitSlot, string>> = {
-    top: 'tops',
-    outerwear: 'tops',
-    dress: 'one-pieces',
-    bottom: 'bottoms',
-  };
-  // Peça que a IA veste: a última escolhida (se suportada), senão a 1ª disponível.
-  function pickAiTarget(): { item: ClothingItem; category: string } | null {
-    const order: OutfitSlot[] =
-      lastSlot && AI_CATEGORY[lastSlot]
-        ? [lastSlot, 'dress', 'top', 'outerwear', 'bottom']
-        : ['dress', 'top', 'outerwear', 'bottom'];
-    for (const s of order) {
-      const it = tryOutfit[s];
-      const cat = AI_CATEGORY[s];
-      if (it && cat) return { item: it, category: cat };
-    }
-    return null;
+  // Peças que a IA veste, em ordem de camada (baixo primeiro, cima por último).
+  // Vestido cobre o corpo todo, então vai sozinho. Calçado/acessório não têm try-on.
+  function aiGarments(): { item: ClothingItem; category: string }[] {
+    if (tryOutfit.dress) return [{ item: tryOutfit.dress, category: 'one-pieces' }];
+    const list: { item: ClothingItem; category: string }[] = [];
+    if (tryOutfit.bottom) list.push({ item: tryOutfit.bottom, category: 'bottoms' });
+    const upper = tryOutfit.top ?? tryOutfit.outerwear;
+    if (upper) list.push({ item: upper, category: 'tops' });
+    return list;
   }
-  const aiTarget = pickAiTarget();
+  const aiList = aiGarments();
 
   async function generateAI() {
     if (!photo) return;
     setAiError(null);
-    if (!aiTarget) {
+    if (aiList.length === 0) {
       setAiError(
-        'Escolha uma "Parte de cima", "Calça", "Casaco" ou "Vestido" — a IA veste essa peça em você. (Calçado ela ainda não faz.)',
+        'Escolha uma "Parte de cima", "Calça", "Casaco" ou "Vestido" — a IA veste essa(s) peça(s) em você. (Calçado ela ainda não faz.)',
       );
       return;
     }
     setAiBusy(true);
     try {
-      const [human, garment] = await Promise.all([shrink(photo), shrink(aiTarget.item.imageUri)]);
-      const { data, error } = await supabase.functions.invoke('smooth-worker', {
-        body: {
-          model: 'fal-ai/fashn/tryon/v1.6',
-          input: { model_image: human, garment_image: garment, category: aiTarget.category },
-        },
-      });
-      if (error) {
-        let msg = 'Não consegui gerar. Tente de novo.';
-        try {
-          const j = await (error as any).context?.json();
-          if (j?.error) msg = j.error;
-        } catch {}
-        setAiError(msg);
-      } else if (data?.url) {
-        setAiResult(data.url as string);
-      } else {
-        setAiError(data?.error ?? 'A IA não retornou imagem.');
+      // Vai vestindo em cadeia: cada resultado vira a "foto" do próximo passo.
+      let currentHuman = await shrink(photo);
+      let lastUrl: string | null = null;
+      for (const g of aiList) {
+        const garment = await shrink(g.item.imageUri);
+        const { data, error } = await supabase.functions.invoke('smooth-worker', {
+          body: {
+            model: 'fal-ai/fashn/tryon/v1.6',
+            input: { model_image: currentHuman, garment_image: garment, category: g.category },
+          },
+        });
+        if (error) {
+          let msg = 'Não consegui gerar. Tente de novo.';
+          try {
+            const j = await (error as any).context?.json();
+            if (j?.error) msg = j.error;
+          } catch {}
+          setAiError(msg);
+          return;
+        }
+        if (!data?.url) {
+          setAiError(data?.error ?? 'A IA não retornou imagem.');
+          return;
+        }
+        lastUrl = data.url as string;
+        currentHuman = lastUrl; // resultado alimenta o próximo passo
       }
+      if (lastUrl) setAiResult(lastUrl);
     } catch (e) {
       setAiError('Falha de conexão. Tente de novo.');
     } finally {
       setAiBusy(false);
     }
+  }
+
+  function saveLook() {
+    setAiError(null);
+    if (outfitPieces(tryOutfit).length === 0) {
+      setAiError('Escolha ao menos uma peça para salvar o look.');
+      return;
+    }
+    saveOutfit(tryOutfit);
+    setSavedMsg(true);
+    setTimeout(() => setSavedMsg(false), 3000);
   }
 
   async function addPhoto(fromCamera: boolean) {
@@ -239,7 +249,6 @@ export function AvatarTryOn({
 
   function pickPiece(item: ClothingItem | null) {
     if (!pickerCat) return;
-    if (item) setLastSlot(pickerCat as OutfitSlot);
     setTryOutfit((o) => ({ ...o, [pickerCat]: item ?? undefined }));
     setPickerCat(null);
   }
@@ -303,8 +312,10 @@ export function AvatarTryOn({
             ) : aiBusy ? (
               <View style={styles.aiLoading}>
                 <ActivityIndicator size="large" color={theme.colors.accent} />
-                <Text style={styles.aiLoadingText}>Vestindo a peça em você…</Text>
-                <Text style={styles.hint}>Isso leva uns 10–20 segundos ✨</Text>
+                <Text style={styles.aiLoadingText}>Vestindo o look em você…</Text>
+                <Text style={styles.hint}>
+                  ~15s por peça{aiList.length > 1 ? ` (${aiList.length} peças, um pouco mais)` : ''} ✨
+                </Text>
               </View>
             ) : (
               <>
@@ -430,13 +441,20 @@ export function AvatarTryOn({
           {photo && hasClothes && !aiBusy && !aiResult && (
             <View style={styles.footer}>
               {aiError && <Text style={styles.aiError}>⚠️ {aiError}</Text>}
-              <Pressable style={styles.aiBtn} onPress={generateAI}>
-                <Ionicons name="sparkles" size={18} color="#FFF" />
-                <Text style={styles.aiBtnText}>Provar com IA</Text>
-              </Pressable>
+              {savedMsg && <Text style={styles.savedMsg}>✓ Look salvo na aba "Salvos"</Text>}
+              <View style={styles.footerRow}>
+                <Pressable style={[styles.aiBtn, styles.aiBtnFlex]} onPress={generateAI}>
+                  <Ionicons name="sparkles" size={18} color="#FFF" />
+                  <Text style={styles.aiBtnText}>Provar com IA</Text>
+                </Pressable>
+                <Pressable style={styles.saveLookBtn} onPress={saveLook}>
+                  <Ionicons name="bookmark-outline" size={18} color={theme.colors.accent} />
+                  <Text style={styles.saveLookText}>Salvar</Text>
+                </Pressable>
+              </View>
               <Text style={styles.aiHint}>
-                {aiTarget
-                  ? `A IA veste "${aiTarget.item.name}" em você — ~15s, 1 crédito.`
+                {aiList.length > 0
+                  ? `A IA veste ${aiList.map((g) => `"${g.item.name}"`).join(' + ')} em você — ~15s por peça.`
                   : 'Escolha cima, calça, casaco ou vestido (calçado a IA ainda não faz).'}
               </Text>
             </View>
@@ -614,6 +632,25 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
     paddingTop: 12,
     paddingBottom: 6,
+  },
+  footerRow: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'stretch' },
+  aiBtnFlex: { flex: 1, marginTop: 0 },
+  saveLookBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentSoft,
+  },
+  saveLookText: { color: theme.colors.accent, fontWeight: '800', fontSize: theme.font.small },
+  savedMsg: {
+    fontSize: theme.font.small,
+    color: theme.colors.success,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 10,
   },
   aiBtn: {
     flexDirection: 'row',
