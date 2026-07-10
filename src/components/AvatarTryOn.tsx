@@ -137,7 +137,14 @@ export function AvatarTryOn({
   const aiGarment = tryOutfit.dress ?? tryOutfit.top;
 
   async function generateAI() {
-    if (!photo || !aiGarment) return;
+    if (!photo) return;
+    if (!aiGarment) {
+      Alert.alert(
+        'Escolha uma peça primeiro',
+        'Toque no slot "Parte de cima" (ou "Vestido") e escolha uma peça. A IA veste essa peça em você.',
+      );
+      return;
+    }
     setAiBusy(true);
     setAiError(null);
     try {
@@ -390,11 +397,7 @@ export function AvatarTryOn({
                     </View>
 
                     {aiError && <Text style={styles.aiError}>⚠️ {aiError}</Text>}
-                    <Pressable
-                      style={[styles.aiBtn, !aiGarment && styles.aiBtnDisabled]}
-                      onPress={generateAI}
-                      disabled={!aiGarment}
-                    >
+                    <Pressable style={styles.aiBtn} onPress={generateAI}>
                       <Ionicons name="sparkles" size={18} color="#FFF" />
                       <Text style={styles.aiBtnText}>Provar com IA</Text>
                     </Pressable>
