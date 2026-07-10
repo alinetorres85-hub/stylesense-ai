@@ -1,8 +1,8 @@
-// Modal "Provador": usa uma FOTO real do usuário como avatar e mostra o look
-// escolhido junto (as peças que compõem a combinação). A foto fica salva na
-// conta (sincroniza entre aparelhos).
+// Modal "Provador": usa uma FOTO real do usuário como avatar e permite MONTAR
+// o look ali dentro (escolher peças do closet por slot) e ver a combinação
+// junto da foto. A foto fica salva na conta (sincroniza entre aparelhos).
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,9 +19,18 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../theme';
 import { useWardrobe } from '../store';
-import { Outfit, outfitPieces } from '../types';
+import { CATEGORY_LABELS, Category, ClothingItem, Outfit, OutfitSlot } from '../types';
 import { persistImage } from '../images';
 import { ItemThumb } from './ItemThumb';
+
+const SLOTS: { key: OutfitSlot; label: string; icon: any }[] = [
+  { key: 'top', label: 'Parte de cima', icon: 'shirt-outline' },
+  { key: 'bottom', label: 'Parte de baixo', icon: 'grid-outline' },
+  { key: 'dress', label: 'Vestido', icon: 'woman-outline' },
+  { key: 'outerwear', label: 'Casaco', icon: 'snow-outline' },
+  { key: 'shoes', label: 'Calçado', icon: 'footsteps-outline' },
+  { key: 'accessory', label: 'Acessório', icon: 'bag-handle-outline' },
+];
 
 // Na web, o expo-image-picker é instável (às vezes não resolve a escolha).
 // Usamos um <input type="file"> nativo do navegador — devolve a foto como
@@ -53,8 +62,6 @@ function pickImageWeb(capture?: 'user' | 'environment'): Promise<string | null> 
       reader.onerror = () => finish(null);
       reader.readAsDataURL(file);
     };
-    // Cancelamento: navegadores modernos disparam 'cancel'; como reforço,
-    // ao voltar o foco pra janela sem arquivo, encerramos.
     input.oncancel = () => finish(null);
     const onFocus = () => {
       setTimeout(() => {
@@ -79,18 +86,24 @@ export function AvatarTryOn({
   title?: string;
   onClose: () => void;
 }) {
-  const { avatar, updateAvatar } = useWardrobe();
+  const { avatar, updateAvatar, items } = useWardrobe();
   const [busy, setBusy] = useState(false);
+  const [tryOutfit, setTryOutfit] = useState<Outfit>(outfit);
+  const [pickerCat, setPickerCat] = useState<Category | null>(null);
   const photo = avatar.photoUri;
-  const pieces = outfitPieces(outfit);
+
+  // Ao abrir, começa do look recebido (sugestão/look salvo) e deixa editar.
+  useEffect(() => {
+    if (visible) setTryOutfit(outfit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   async function addPhoto(fromCamera: boolean) {
     try {
       let dataUrl: string | null = null;
-
       if (Platform.OS === 'web') {
         dataUrl = await pickImageWeb(fromCamera ? 'user' : undefined);
-        if (!dataUrl) return; // cancelou
+        if (!dataUrl) return;
         setBusy(true);
       } else {
         const perm = fromCamera
@@ -116,7 +129,6 @@ export function AvatarTryOn({
           ? `data:${a.mimeType ?? 'image/jpeg'};base64,${a.base64}`
           : await persistImage(a.uri);
       }
-
       updateAvatar({ photoUri: dataUrl });
     } catch (e) {
       Alert.alert('Ops', 'Não consegui usar essa foto. Tente outra.');
@@ -128,6 +140,15 @@ export function AvatarTryOn({
   function removePhoto() {
     updateAvatar({ photoUri: undefined });
   }
+
+  function pickPiece(item: ClothingItem | null) {
+    if (!pickerCat) return;
+    setTryOutfit((o) => ({ ...o, [pickerCat]: item ?? undefined }));
+    setPickerCat(null);
+  }
+
+  const hasClothes = items.length > 0;
+  const catItems = pickerCat ? items.filter((i) => i.category === pickerCat) : [];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -141,53 +162,125 @@ export function AvatarTryOn({
           </View>
 
           <ScrollView
-            contentContainerStyle={{ paddingBottom: 28, alignItems: 'center' }}
+            contentContainerStyle={{ paddingBottom: 28 }}
             showsVerticalScrollIndicator={false}
           >
-            {photo ? (
+            {pickerCat ? (
+              <View>
+                <View style={styles.pickerHeader}>
+                  <Pressable style={styles.backBtn} onPress={() => setPickerCat(null)}>
+                    <Ionicons name="chevron-back" size={20} color={theme.colors.accent} />
+                    <Text style={styles.backText}>Voltar</Text>
+                  </Pressable>
+                  <Text style={styles.pickerTitle}>
+                    {CATEGORY_LABELS[pickerCat]}
+                  </Text>
+                </View>
+                {catItems.length === 0 ? (
+                  <Text style={styles.hint}>
+                    Nenhuma peça dessa categoria. Cadastre na aba Novo.
+                  </Text>
+                ) : (
+                  <View style={styles.grid}>
+                    {catItems.map((it) => {
+                      const active = tryOutfit[pickerCat]?.id === it.id;
+                      return (
+                        <Pressable
+                          key={it.id}
+                          style={styles.gridCell}
+                          onPress={() => pickPiece(it)}
+                        >
+                          <ItemThumb
+                            item={it}
+                            style={[styles.gridImg, active && styles.gridImgActive]}
+                            rounded={theme.radius.sm}
+                          />
+                          <Text style={styles.gridName} numberOfLines={1}>
+                            {it.name}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+                {tryOutfit[pickerCat] && (
+                  <Pressable style={styles.removePieceBtn} onPress={() => pickPiece(null)}>
+                    <Text style={styles.removePieceText}>Remover do look</Text>
+                  </Pressable>
+                )}
+              </View>
+            ) : photo ? (
               <>
-                <View style={styles.photoWrap}>
-                  <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
-                  {busy && (
-                    <View style={styles.photoBusy}>
-                      <ActivityIndicator color="#FFF" />
-                    </View>
-                  )}
+                <View style={styles.photoRow}>
+                  <View style={styles.photoWrap}>
+                    <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
+                    {busy && (
+                      <View style={styles.photoBusy}>
+                        <ActivityIndicator color="#FFF" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.photoSide}>
+                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(false)} disabled={busy}>
+                      <Ionicons name="image-outline" size={15} color={theme.colors.accent} />
+                      <Text style={styles.sideBtnText}>Trocar</Text>
+                    </Pressable>
+                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(true)} disabled={busy}>
+                      <Ionicons name="camera-outline" size={15} color={theme.colors.accent} />
+                      <Text style={styles.sideBtnText}>Câmera</Text>
+                    </Pressable>
+                    <Pressable style={styles.sideBtnGhost} onPress={removePhoto} hitSlop={6}>
+                      <Text style={styles.sideBtnGhostText}>Remover foto</Text>
+                    </Pressable>
+                  </View>
                 </View>
 
-                <Text style={styles.lookLabel}>
-                  {pieces.length ? 'Seu look' : 'Escolha um look para combinar'}
-                </Text>
-                {pieces.length > 0 ? (
-                  <View style={styles.pieces}>
-                    {pieces.map((p) => (
-                      <View key={p.id} style={styles.pieceItem}>
-                        <ItemThumb item={p} style={styles.pieceThumb} rounded={theme.radius.sm} />
-                      </View>
-                    ))}
+                <Text style={styles.lookLabel}>Prove as peças</Text>
+                {hasClothes ? (
+                  <View style={styles.slots}>
+                    {SLOTS.map((s) => {
+                      const it = tryOutfit[s.key];
+                      return (
+                        <View key={s.key} style={styles.slot}>
+                          {it ? (
+                            <ItemThumb
+                              item={it}
+                              style={styles.slotThumb}
+                              rounded={theme.radius.sm}
+                            />
+                          ) : (
+                            <View style={styles.slotEmpty}>
+                              <Ionicons name={s.icon} size={22} color={theme.colors.muted} />
+                              <Ionicons
+                                name="add-circle"
+                                size={18}
+                                color={theme.colors.accent}
+                                style={styles.slotAdd}
+                              />
+                            </View>
+                          )}
+                          <Text style={styles.slotLabel}>{s.label}</Text>
+                          <Text style={styles.slotName} numberOfLines={1}>
+                            {it ? it.name : 'toque para escolher'}
+                          </Text>
+                          {/* Toque por cima de tudo (fica acima da imagem, que na web
+                              captura o clique) — garante o onPress em qualquer ponto. */}
+                          <Pressable
+                            style={StyleSheet.absoluteFill}
+                            onPress={() => setPickerCat(s.key as Category)}
+                          />
+                        </View>
+                      );
+                    })}
                   </View>
                 ) : (
                   <Text style={styles.hint}>
-                    Volte e escolha (ou monte) um look para ver a combinação aqui. ✨
+                    Cadastre roupas no seu Closet (aba Novo) para montar e provar o look aqui. ✨
                   </Text>
                 )}
-
-                <View style={styles.actions}>
-                  <Pressable style={styles.outlineBtn} onPress={() => addPhoto(false)} disabled={busy}>
-                    <Ionicons name="image-outline" size={16} color={theme.colors.accent} />
-                    <Text style={styles.outlineBtnText}>Trocar foto</Text>
-                  </Pressable>
-                  <Pressable style={styles.outlineBtn} onPress={() => addPhoto(true)} disabled={busy}>
-                    <Ionicons name="camera-outline" size={16} color={theme.colors.accent} />
-                    <Text style={styles.outlineBtnText}>Câmera</Text>
-                  </Pressable>
-                </View>
-                <Pressable onPress={removePhoto} hitSlop={8} style={styles.removeBtn}>
-                  <Text style={styles.removeText}>Remover foto</Text>
-                </Pressable>
               </>
             ) : (
-              <>
+              <View style={{ alignItems: 'center' }}>
                 <View style={styles.placeholder}>
                   {busy ? (
                     <ActivityIndicator color={theme.colors.accent} />
@@ -198,7 +291,7 @@ export function AvatarTryOn({
                 <Text style={styles.emptyTitle}>Crie seu avatar com a sua foto</Text>
                 <Text style={styles.hint}>
                   Envie uma foto sua de corpo inteiro (de preferência em pé, fundo limpo). Ela vira
-                  seu avatar no provador — e fica salva na sua conta.
+                  seu avatar — depois você prova as peças do seu closet aqui.
                 </Text>
                 <View style={styles.actions}>
                   <Pressable style={styles.solidBtn} onPress={() => addPhoto(true)} disabled={busy}>
@@ -210,7 +303,7 @@ export function AvatarTryOn({
                     <Text style={styles.solidBtnText}>Galeria</Text>
                   </Pressable>
                 </View>
-              </>
+              </View>
             )}
           </ScrollView>
         </View>
@@ -244,12 +337,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  photoRow: { flexDirection: 'row', gap: 14, marginTop: 8 },
   photoWrap: {
-    width: 240,
+    width: 170,
     aspectRatio: 3 / 4,
     borderRadius: theme.radius.lg,
     overflow: 'hidden',
-    marginTop: 8,
     backgroundColor: theme.colors.surfaceAlt,
     ...theme.shadow.card,
   },
@@ -260,24 +353,56 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  photoSide: { flex: 1, justifyContent: 'center', gap: 10 },
+  sideBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.accentSoft,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.pill,
+    alignSelf: 'flex-start',
+  },
+  sideBtnText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
+  sideBtnGhost: { paddingVertical: 4, alignSelf: 'flex-start' },
+  sideBtnGhostText: { color: theme.colors.muted, fontSize: theme.font.small, fontWeight: '600' },
   lookLabel: {
     fontSize: theme.font.body,
     fontWeight: '800',
     color: theme.colors.text,
-    marginTop: 20,
+    marginTop: 22,
     marginBottom: 12,
-    alignSelf: 'stretch',
-    paddingHorizontal: 4,
   },
-  pieces: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    alignSelf: 'stretch',
+  slots: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  slot: {
+    width: '47%',
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.md,
+    padding: 10,
+    ...theme.shadow.card,
+  },
+  slotInner: { pointerEvents: 'none' },
+  slotThumb: { width: '100%', height: 110 },
+  slotEmpty: {
+    width: '100%',
+    height: 110,
+    borderRadius: theme.radius.sm,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    borderStyle: 'dashed',
+    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: theme.colors.bg,
   },
-  pieceItem: {},
-  pieceThumb: { width: 74, height: 92 },
+  slotAdd: { position: 'absolute', bottom: 8, right: 8 },
+  slotLabel: {
+    fontSize: theme.font.small,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginTop: 8,
+  },
+  slotName: { fontSize: theme.font.tiny, color: theme.colors.muted, marginTop: 1 },
   hint: {
     fontSize: theme.font.small,
     color: theme.colors.muted,
@@ -305,13 +430,40 @@ const styles = StyleSheet.create({
     marginTop: 18,
     textAlign: 'center',
   },
-  actions: {
+  pickerHeader: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-    justifyContent: 'center',
-    alignSelf: 'stretch',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 14,
   },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: theme.colors.accentSoft,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: theme.radius.pill,
+  },
+  backText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
+  pickerTitle: { fontSize: theme.font.body, fontWeight: '800', color: theme.colors.text },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  gridCell: { width: '30%' },
+  gridImg: { width: '100%', height: 104 },
+  gridImgActive: { borderWidth: 2.5, borderColor: theme.colors.accent },
+  gridName: { fontSize: theme.font.tiny, color: theme.colors.text, marginTop: 4 },
+  removePieceBtn: {
+    marginTop: 16,
+    height: 46,
+    borderRadius: theme.radius.pill,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removePieceText: { color: theme.colors.danger, fontWeight: '700', fontSize: theme.font.small },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 20, justifyContent: 'center' },
   solidBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -323,16 +475,4 @@ const styles = StyleSheet.create({
     ...theme.shadow.accent,
   },
   solidBtnText: { color: '#FFF', fontWeight: '800', fontSize: theme.font.body },
-  outlineBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: theme.colors.accentSoft,
-    paddingVertical: 11,
-    paddingHorizontal: 18,
-    borderRadius: theme.radius.pill,
-  },
-  outlineBtnText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
-  removeBtn: { marginTop: 14 },
-  removeText: { color: theme.colors.muted, fontSize: theme.font.small, fontWeight: '600' },
 });
