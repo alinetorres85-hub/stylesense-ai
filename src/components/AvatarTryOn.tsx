@@ -120,6 +120,7 @@ export function AvatarTryOn({
   const [aiBusy, setAiBusy] = useState(false);
   const [aiResult, setAiResult] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [lastSlot, setLastSlot] = useState<OutfitSlot | null>(null);
   const photo = avatar.photoUri;
 
   // Ao abrir, começa do look recebido (sugestão/look salvo) e deixa editar.
@@ -129,27 +130,50 @@ export function AvatarTryOn({
       setPickerCat(null);
       setAiResult(null);
       setAiError(null);
+      setLastSlot(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Peça que a IA veste: prioriza vestido, senão a parte de cima.
-  const aiGarment = tryOutfit.dress ?? tryOutfit.top;
+  // Categoria que a IA entende por slot (calçado/acessório não têm try-on).
+  const AI_CATEGORY: Partial<Record<OutfitSlot, string>> = {
+    top: 'tops',
+    outerwear: 'tops',
+    dress: 'one-pieces',
+    bottom: 'bottoms',
+  };
+  // Peça que a IA veste: a última escolhida (se suportada), senão a 1ª disponível.
+  function pickAiTarget(): { item: ClothingItem; category: string } | null {
+    const order: OutfitSlot[] =
+      lastSlot && AI_CATEGORY[lastSlot]
+        ? [lastSlot, 'dress', 'top', 'outerwear', 'bottom']
+        : ['dress', 'top', 'outerwear', 'bottom'];
+    for (const s of order) {
+      const it = tryOutfit[s];
+      const cat = AI_CATEGORY[s];
+      if (it && cat) return { item: it, category: cat };
+    }
+    return null;
+  }
+  const aiTarget = pickAiTarget();
 
   async function generateAI() {
     if (!photo) return;
     setAiError(null);
-    if (!aiGarment) {
+    if (!aiTarget) {
       setAiError(
-        'A IA só veste "Parte de cima" ou "Vestido". Escolha uma blusa/camiseta ou um vestido — calças e calçados ela ainda não veste.',
+        'Escolha uma "Parte de cima", "Calça", "Casaco" ou "Vestido" — a IA veste essa peça em você. (Calçado ela ainda não faz.)',
       );
       return;
     }
     setAiBusy(true);
     try {
-      const [human, garment] = await Promise.all([shrink(photo), shrink(aiGarment.imageUri)]);
-      const { data, error } = await supabase.functions.invoke('tryon', {
-        body: { human, garment },
+      const [human, garment] = await Promise.all([shrink(photo), shrink(aiTarget.item.imageUri)]);
+      const { data, error } = await supabase.functions.invoke('smooth-worker', {
+        body: {
+          model: 'fal-ai/fashn/tryon/v1.6',
+          input: { model_image: human, garment_image: garment, category: aiTarget.category },
+        },
       });
       if (error) {
         let msg = 'Não consegui gerar. Tente de novo.';
@@ -215,6 +239,7 @@ export function AvatarTryOn({
 
   function pickPiece(item: ClothingItem | null) {
     if (!pickerCat) return;
+    if (item) setLastSlot(pickerCat as OutfitSlot);
     setTryOutfit((o) => ({ ...o, [pickerCat]: item ?? undefined }));
     setPickerCat(null);
   }
@@ -410,9 +435,9 @@ export function AvatarTryOn({
                 <Text style={styles.aiBtnText}>Provar com IA</Text>
               </Pressable>
               <Text style={styles.aiHint}>
-                {aiGarment
-                  ? `A IA veste "${(tryOutfit.dress ?? tryOutfit.top)!.name}" em você — ~15s, 1 crédito.`
-                  : 'A IA veste só "Parte de cima" ou "Vestido" (calça e calçado ainda não).'}
+                {aiTarget
+                  ? `A IA veste "${aiTarget.item.name}" em você — ~15s, 1 crédito.`
+                  : 'Escolha cima, calça, casaco ou vestido (calçado a IA ainda não faz).'}
               </Text>
             </View>
           )}

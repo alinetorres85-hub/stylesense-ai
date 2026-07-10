@@ -1,10 +1,12 @@
 // Função de backend (Supabase Edge Function) — "provador com IA".
-// Recebe a foto do usuário (human) + a foto da peça (garment) e chama o modelo
-// de virtual try-on da fal.ai (Kling Kolors). A chave secreta FAL_KEY fica só
-// aqui no servidor (nunca no app).
+// Proxy genérico e seguro para a fal.ai: recebe { model, input } do app e chama
+// o modelo escolhido (whitelist), devolvendo a URL da imagem gerada. A chave
+// secreta FAL_KEY fica só aqui no servidor (nunca no app).
 //
-// Deploy: no painel do Supabase → Edge Functions → Deploy a new function →
-// nome "tryon" → cole este arquivo → Deploy. Depois adicione o segredo FAL_KEY.
+// Retrocompatível: aceita também o formato antigo { human, garment } (Kolors).
+//
+// Deploy: painel do Supabase → Edge Functions → função "tryon" → cole este
+// arquivo → Deploy. O segredo FAL_KEY já está configurado.
 
 const cors: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -19,41 +21,51 @@ function json(obj: unknown, status = 200): Response {
   });
 }
 
+// Só estes modelos podem ser chamados (evita abuso do crédito).
+const ALLOWED = new Set([
+  'fal-ai/fashn/tryon/v1.6',
+  'fal-ai/kling/v1-5/kolors-virtual-try-on',
+]);
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
-    const { human, garment } = await req.json();
-    if (!human || !garment) {
-      return json({ error: 'Faltou a sua foto ou a foto da peça.' }, 400);
+    const body = await req.json();
+
+    let model: string;
+    let input: Record<string, unknown>;
+    if (body.model && body.input) {
+      model = body.model;
+      input = body.input;
+    } else if (body.human && body.garment) {
+      // formato antigo
+      model = 'fal-ai/kling/v1-5/kolors-virtual-try-on';
+      input = { human_image_url: body.human, garment_image_url: body.garment };
+    } else {
+      return json({ error: 'Entrada inválida (faltou model/input).' }, 400);
     }
+
+    if (!ALLOWED.has(model)) return json({ error: 'Modelo não permitido.' }, 400);
 
     const falKey = Deno.env.get('FAL_KEY');
     if (!falKey) return json({ error: 'FAL_KEY não configurada no servidor.' }, 500);
 
-    const resp = await fetch(
-      'https://fal.run/fal-ai/kling/v1-5/kolors-virtual-try-on',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Key ${falKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          human_image_url: human,
-          garment_image_url: garment,
-        }),
-      },
-    );
+    const resp = await fetch(`https://fal.run/${model}`, {
+      method: 'POST',
+      headers: { Authorization: `Key ${falKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
 
-    const data = await resp.json().catch(() => ({}));
+    const data = await resp.json().catch(() => ({} as any));
     if (!resp.ok) {
       const detail =
         (data && (data.detail || data.error || data.message)) || `Erro ${resp.status}`;
       return json({ error: typeof detail === 'string' ? detail : 'Falha na IA' }, 502);
     }
 
-    const url = data?.image?.url ?? null;
+    // FASHN devolve images[0].url; Kolors devolve image.url.
+    const url = data?.images?.[0]?.url ?? data?.image?.url ?? null;
     if (!url) return json({ error: 'A IA não retornou imagem.' }, 502);
     return json({ url });
   } catch (e) {
