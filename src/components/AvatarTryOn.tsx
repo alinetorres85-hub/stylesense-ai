@@ -1,6 +1,6 @@
 // Modal "Provador": usa uma FOTO real do usuário como avatar e permite MONTAR
 // o look ali dentro (escolher peças do closet por slot) e ver a combinação
-// junto da foto. A foto fica salva na conta (sincroniza entre aparelhos).
+// junto da foto. A foto fica sempre visível; o seletor de peças aparece abaixo.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -94,7 +94,10 @@ export function AvatarTryOn({
 
   // Ao abrir, começa do look recebido (sugestão/look salvo) e deixa editar.
   useEffect(() => {
-    if (visible) setTryOutfit(outfit);
+    if (visible) {
+      setTryOutfit(outfit);
+      setPickerCat(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -165,121 +168,7 @@ export function AvatarTryOn({
             contentContainerStyle={{ paddingBottom: 28 }}
             showsVerticalScrollIndicator={false}
           >
-            {pickerCat ? (
-              <View>
-                <View style={styles.pickerHeader}>
-                  <Pressable style={styles.backBtn} onPress={() => setPickerCat(null)}>
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.accent} />
-                    <Text style={styles.backText}>Voltar</Text>
-                  </Pressable>
-                  <Text style={styles.pickerTitle}>
-                    {CATEGORY_LABELS[pickerCat]}
-                  </Text>
-                </View>
-                {catItems.length === 0 ? (
-                  <Text style={styles.hint}>
-                    Nenhuma peça dessa categoria. Cadastre na aba Novo.
-                  </Text>
-                ) : (
-                  <View style={styles.grid}>
-                    {catItems.map((it) => {
-                      const active = tryOutfit[pickerCat]?.id === it.id;
-                      return (
-                        <Pressable
-                          key={it.id}
-                          style={styles.gridCell}
-                          onPress={() => pickPiece(it)}
-                        >
-                          <ItemThumb
-                            item={it}
-                            style={[styles.gridImg, active && styles.gridImgActive]}
-                            rounded={theme.radius.sm}
-                          />
-                          <Text style={styles.gridName} numberOfLines={1}>
-                            {it.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
-                {tryOutfit[pickerCat] && (
-                  <Pressable style={styles.removePieceBtn} onPress={() => pickPiece(null)}>
-                    <Text style={styles.removePieceText}>Remover do look</Text>
-                  </Pressable>
-                )}
-              </View>
-            ) : photo ? (
-              <>
-                <View style={styles.photoRow}>
-                  <View style={styles.photoWrap}>
-                    <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
-                    {busy && (
-                      <View style={styles.photoBusy}>
-                        <ActivityIndicator color="#FFF" />
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.photoSide}>
-                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(false)} disabled={busy}>
-                      <Ionicons name="image-outline" size={15} color={theme.colors.accent} />
-                      <Text style={styles.sideBtnText}>Trocar</Text>
-                    </Pressable>
-                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(true)} disabled={busy}>
-                      <Ionicons name="camera-outline" size={15} color={theme.colors.accent} />
-                      <Text style={styles.sideBtnText}>Câmera</Text>
-                    </Pressable>
-                    <Pressable style={styles.sideBtnGhost} onPress={removePhoto} hitSlop={6}>
-                      <Text style={styles.sideBtnGhostText}>Remover foto</Text>
-                    </Pressable>
-                  </View>
-                </View>
-
-                <Text style={styles.lookLabel}>Prove as peças</Text>
-                {hasClothes ? (
-                  <View style={styles.slots}>
-                    {SLOTS.map((s) => {
-                      const it = tryOutfit[s.key];
-                      return (
-                        <View key={s.key} style={styles.slot}>
-                          {it ? (
-                            <ItemThumb
-                              item={it}
-                              style={styles.slotThumb}
-                              rounded={theme.radius.sm}
-                            />
-                          ) : (
-                            <View style={styles.slotEmpty}>
-                              <Ionicons name={s.icon} size={22} color={theme.colors.muted} />
-                              <Ionicons
-                                name="add-circle"
-                                size={18}
-                                color={theme.colors.accent}
-                                style={styles.slotAdd}
-                              />
-                            </View>
-                          )}
-                          <Text style={styles.slotLabel}>{s.label}</Text>
-                          <Text style={styles.slotName} numberOfLines={1}>
-                            {it ? it.name : 'toque para escolher'}
-                          </Text>
-                          {/* Toque por cima de tudo (fica acima da imagem, que na web
-                              captura o clique) — garante o onPress em qualquer ponto. */}
-                          <Pressable
-                            style={StyleSheet.absoluteFill}
-                            onPress={() => setPickerCat(s.key as Category)}
-                          />
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <Text style={styles.hint}>
-                    Cadastre roupas no seu Closet (aba Novo) para montar e provar o look aqui. ✨
-                  </Text>
-                )}
-              </>
-            ) : (
+            {!photo ? (
               <View style={{ alignItems: 'center' }}>
                 <View style={styles.placeholder}>
                   {busy ? (
@@ -304,6 +193,123 @@ export function AvatarTryOn({
                   </Pressable>
                 </View>
               </View>
+            ) : (
+              <>
+                {/* Foto sempre visível */}
+                <View style={styles.photoRow}>
+                  <View style={styles.photoWrap}>
+                    <Image source={{ uri: photo }} style={styles.photo} resizeMode="cover" />
+                    {busy && (
+                      <View style={styles.photoBusy}>
+                        <ActivityIndicator color="#FFF" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.photoSide}>
+                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(false)} disabled={busy}>
+                      <Ionicons name="image-outline" size={15} color={theme.colors.accent} />
+                      <Text style={styles.sideBtnText}>Trocar</Text>
+                    </Pressable>
+                    <Pressable style={styles.sideBtn} onPress={() => addPhoto(true)} disabled={busy}>
+                      <Ionicons name="camera-outline" size={15} color={theme.colors.accent} />
+                      <Text style={styles.sideBtnText}>Câmera</Text>
+                    </Pressable>
+                    <Pressable style={styles.sideBtnGhost} onPress={removePhoto} hitSlop={6}>
+                      <Text style={styles.sideBtnGhostText}>Remover foto</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {!hasClothes ? (
+                  <Text style={styles.hint}>
+                    Cadastre roupas no seu Closet (aba Novo) para montar e provar o look aqui. ✨
+                  </Text>
+                ) : pickerCat ? (
+                  // Seletor de peça (inline, abaixo da foto)
+                  <View>
+                    <View style={styles.pickerHeader}>
+                      <Pressable style={styles.backBtn} onPress={() => setPickerCat(null)}>
+                        <Ionicons name="chevron-back" size={20} color={theme.colors.accent} />
+                        <Text style={styles.backText}>Voltar</Text>
+                      </Pressable>
+                      <Text style={styles.pickerTitle}>{CATEGORY_LABELS[pickerCat]}</Text>
+                    </View>
+                    {catItems.length === 0 ? (
+                      <Text style={styles.hint}>
+                        Nenhuma peça dessa categoria. Cadastre na aba Novo.
+                      </Text>
+                    ) : (
+                      <View style={styles.grid}>
+                        {catItems.map((it) => {
+                          const active = tryOutfit[pickerCat]?.id === it.id;
+                          return (
+                            <View key={it.id} style={styles.gridCell}>
+                              <ItemThumb
+                                item={it}
+                                style={[styles.gridImg, active && styles.gridImgActive]}
+                                rounded={theme.radius.sm}
+                              />
+                              <Text style={styles.gridName} numberOfLines={1}>
+                                {it.name}
+                              </Text>
+                              <Pressable
+                                style={StyleSheet.absoluteFill}
+                                onPress={() => pickPiece(it)}
+                              />
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                    {tryOutfit[pickerCat] && (
+                      <Pressable style={styles.removePieceBtn} onPress={() => pickPiece(null)}>
+                        <Text style={styles.removePieceText}>Remover do look</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                ) : (
+                  // Slots do look (toque para escolher cada peça)
+                  <>
+                    <Text style={styles.lookLabel}>Prove as peças</Text>
+                    <View style={styles.slots}>
+                      {SLOTS.map((s) => {
+                        const it = tryOutfit[s.key];
+                        return (
+                          <View key={s.key} style={styles.slot}>
+                            {it ? (
+                              <ItemThumb
+                                item={it}
+                                style={styles.slotThumb}
+                                rounded={theme.radius.sm}
+                              />
+                            ) : (
+                              <View style={styles.slotEmpty}>
+                                <Ionicons name={s.icon} size={22} color={theme.colors.muted} />
+                                <Ionicons
+                                  name="add-circle"
+                                  size={18}
+                                  color={theme.colors.accent}
+                                  style={styles.slotAdd}
+                                />
+                              </View>
+                            )}
+                            <Text style={styles.slotLabel}>{s.label}</Text>
+                            <Text style={styles.slotName} numberOfLines={1}>
+                              {it ? it.name : 'toque para escolher'}
+                            </Text>
+                            {/* Toque por cima de tudo (fica acima da imagem, que na
+                                web captura o clique) — garante o onPress. */}
+                            <Pressable
+                              style={StyleSheet.absoluteFill}
+                              onPress={() => setPickerCat(s.key as Category)}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+              </>
             )}
           </ScrollView>
         </View>
@@ -382,7 +388,6 @@ const styles = StyleSheet.create({
     padding: 10,
     ...theme.shadow.card,
   },
-  slotInner: { pointerEvents: 'none' },
   slotThumb: { width: '100%', height: 110 },
   slotEmpty: {
     width: '100%',
@@ -434,7 +439,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 6,
+    marginTop: 18,
     marginBottom: 14,
   },
   backBtn: {
