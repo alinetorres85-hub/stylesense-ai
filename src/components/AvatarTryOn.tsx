@@ -21,7 +21,34 @@ import { theme } from '../theme';
 import { useWardrobe } from '../store';
 import { CATEGORY_LABELS, Category, ClothingItem, Outfit, OutfitSlot } from '../types';
 import { persistImage } from '../images';
+import { supabase } from '../supabaseClient';
 import { ItemThumb } from './ItemThumb';
+
+// Reduz a imagem (na web) antes de mandar pra IA: evita estourar o limite de
+// tamanho da requisição e deixa a geração mais rápida. Máx. 1024px, JPEG.
+async function shrink(uri: string): Promise<string> {
+  if (Platform.OS !== 'web' || !uri.startsWith('data:')) return uri;
+  try {
+    const g: any = globalThis as any;
+    const img: any = await new Promise((res, rej) => {
+      const i = new g.Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = uri;
+    });
+    const maxDim = 1024;
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = g.document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch {
+    return uri;
+  }
+}
 
 const SLOTS: { key: OutfitSlot; label: string; icon: any }[] = [
   { key: 'top', label: 'Parte de cima', icon: 'shirt-outline' },
@@ -90,6 +117,9 @@ export function AvatarTryOn({
   const [busy, setBusy] = useState(false);
   const [tryOutfit, setTryOutfit] = useState<Outfit>(outfit);
   const [pickerCat, setPickerCat] = useState<Category | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const photo = avatar.photoUri;
 
   // Ao abrir, começa do look recebido (sugestão/look salvo) e deixa editar.
@@ -97,9 +127,42 @@ export function AvatarTryOn({
     if (visible) {
       setTryOutfit(outfit);
       setPickerCat(null);
+      setAiResult(null);
+      setAiError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  // Peça que a IA veste: prioriza vestido, senão a parte de cima.
+  const aiGarment = tryOutfit.dress ?? tryOutfit.top;
+
+  async function generateAI() {
+    if (!photo || !aiGarment) return;
+    setAiBusy(true);
+    setAiError(null);
+    try {
+      const [human, garment] = await Promise.all([shrink(photo), shrink(aiGarment.imageUri)]);
+      const { data, error } = await supabase.functions.invoke('tryon', {
+        body: { human, garment },
+      });
+      if (error) {
+        let msg = 'Não consegui gerar. Tente de novo.';
+        try {
+          const j = await (error as any).context?.json();
+          if (j?.error) msg = j.error;
+        } catch {}
+        setAiError(msg);
+      } else if (data?.url) {
+        setAiResult(data.url as string);
+      } else {
+        setAiError(data?.error ?? 'A IA não retornou imagem.');
+      }
+    } catch (e) {
+      setAiError('Falha de conexão. Tente de novo.');
+    } finally {
+      setAiBusy(false);
+    }
+  }
 
   async function addPhoto(fromCamera: boolean) {
     try {
@@ -192,6 +255,24 @@ export function AvatarTryOn({
                     <Text style={styles.solidBtnText}>Galeria</Text>
                   </Pressable>
                 </View>
+              </View>
+            ) : aiResult ? (
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.lookLabel}>✨ Você com essa peça</Text>
+                <Image source={{ uri: aiResult }} style={styles.resultImg} resizeMode="cover" />
+                <Text style={styles.hint}>
+                  Gerado por IA — a qualidade varia. Se sair estranho, tente outra foto ou peça.
+                </Text>
+                <Pressable style={styles.aiBtn} onPress={() => setAiResult(null)}>
+                  <Ionicons name="refresh" size={18} color="#FFF" />
+                  <Text style={styles.aiBtnText}>Provar outra</Text>
+                </Pressable>
+              </View>
+            ) : aiBusy ? (
+              <View style={styles.aiLoading}>
+                <ActivityIndicator size="large" color={theme.colors.accent} />
+                <Text style={styles.aiLoadingText}>Vestindo a peça em você…</Text>
+                <Text style={styles.hint}>Isso leva uns 10–20 segundos ✨</Text>
               </View>
             ) : (
               <>
@@ -307,6 +388,21 @@ export function AvatarTryOn({
                         );
                       })}
                     </View>
+
+                    {aiError && <Text style={styles.aiError}>⚠️ {aiError}</Text>}
+                    <Pressable
+                      style={[styles.aiBtn, !aiGarment && styles.aiBtnDisabled]}
+                      onPress={generateAI}
+                      disabled={!aiGarment}
+                    >
+                      <Ionicons name="sparkles" size={18} color="#FFF" />
+                      <Text style={styles.aiBtnText}>Provar com IA</Text>
+                    </Pressable>
+                    <Text style={styles.aiHint}>
+                      {aiGarment
+                        ? 'A IA veste a parte de cima (ou vestido) em você — leva ~15s e usa 1 crédito.'
+                        : 'Escolha uma parte de cima ou um vestido para provar com IA.'}
+                    </Text>
                   </>
                 )}
               </>
@@ -480,4 +576,45 @@ const styles = StyleSheet.create({
     ...theme.shadow.accent,
   },
   solidBtnText: { color: '#FFF', fontWeight: '800', fontSize: theme.font.body },
+  aiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.accent,
+    paddingVertical: 15,
+    borderRadius: theme.radius.pill,
+    marginTop: 22,
+    ...theme.shadow.accent,
+  },
+  aiBtnDisabled: { backgroundColor: theme.colors.muted, opacity: 0.5 },
+  aiBtnText: { color: '#FFF', fontWeight: '800', fontSize: theme.font.body },
+  aiHint: {
+    fontSize: theme.font.tiny,
+    color: theme.colors.muted,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  aiError: {
+    fontSize: theme.font.small,
+    color: theme.colors.danger,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  aiLoading: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+  aiLoadingText: {
+    fontSize: theme.font.body,
+    fontWeight: '800',
+    color: theme.colors.text,
+    marginTop: 6,
+  },
+  resultImg: {
+    width: 260,
+    aspectRatio: 3 / 4,
+    borderRadius: theme.radius.lg,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: theme.colors.surfaceAlt,
+    ...theme.shadow.card,
+  },
 });
