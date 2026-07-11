@@ -12,7 +12,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { theme } from '../theme';
 import {
   CATEGORY_EMOJI,
@@ -25,6 +24,7 @@ import {
 import { Chip, LevelPicker, PrimaryButton, Swatch } from '../components/ui';
 import { useWardrobe } from '../store';
 import { persistImage } from '../images';
+import { pickImage, pickImages } from '../imagePicker';
 import { loadApiKey, saveApiKey } from '../storage';
 import { detectGarment } from '../detect';
 
@@ -76,45 +76,36 @@ export function AddItemScreen({
   // união das sugestões + tags personalizadas já selecionadas, sem repetir
   const allTags = Array.from(new Set([...SUGGESTED_TAGS, ...tags]));
 
+  // Guarda a imagem escolhida (data URL pronto) e extrai base64/mime p/ a IA.
+  function applyPicked(uri: string) {
+    setImageUri(uri);
+    if (uri.startsWith('data:')) {
+      const comma = uri.indexOf(',');
+      setImageBase64(uri.slice(comma + 1));
+      setImageMime(uri.slice(5, uri.indexOf(';')) || 'image/jpeg');
+    } else {
+      setImageBase64(null);
+      setImageMime('image/jpeg');
+    }
+    setImageChanged(true);
+  }
+
   async function pickFromGallery() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
+    const uri = await pickImage(false);
+    if (uri === 'denied') {
       Alert.alert('Permissão necessária', 'Autorize o acesso à galeria para escolher uma foto.');
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [3, 4],
-      base64: true,
-    });
-    if (!res.canceled && res.assets[0]) {
-      setImageUri(res.assets[0].uri);
-      setImageBase64(res.assets[0].base64 ?? null);
-      setImageMime(res.assets[0].mimeType ?? 'image/jpeg');
-      setImageChanged(true);
-    }
+    if (uri) applyPicked(uri);
   }
 
   async function takePhoto() {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
+    const uri = await pickImage(true);
+    if (uri === 'denied') {
       Alert.alert('Permissão necessária', 'Autorize o acesso à câmera para tirar uma foto.');
       return;
     }
-    const res = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [3, 4],
-      base64: true,
-    });
-    if (!res.canceled && res.assets[0]) {
-      setImageUri(res.assets[0].uri);
-      setImageBase64(res.assets[0].base64 ?? null);
-      setImageMime(res.assets[0].mimeType ?? 'image/jpeg');
-      setImageChanged(true);
-    }
+    if (uri) applyPicked(uri);
   }
 
   // ---- Detecção por IA (categoria + cor) ----
@@ -167,39 +158,22 @@ export function AddItemScreen({
   // Importação em massa: várias fotos da galeria viram peças (com defaults
   // para o usuário ajustar depois). As imagens já são salvas de forma permanente.
   async function importMany() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permissão necessária', 'Autorize o acesso à galeria.');
-      return;
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: 0,
-      quality: 0.7,
-    });
-    if (res.canceled || !res.assets?.length) return;
+    const uris = await pickImages();
+    if (!uris.length) return;
 
-    const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = await Promise.all(
-      res.assets.map(async (a) => ({
-        imageUri: await persistImage(a.uri),
-        name: 'Nova peça',
-        category: 'top' as Category,
-        colorId: 'preto',
-        warmth: 3,
-        formality: 3,
-        rainproof: false,
-        tags: [],
-      })),
-    );
+    const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = uris.map((uri) => ({
+      imageUri: uri,
+      name: 'Nova peça',
+      category: 'top' as Category,
+      colorId: 'preto',
+      warmth: 3,
+      formality: 3,
+      rainproof: false,
+      tags: [],
+    }));
     addItems(datas);
-
-    const n = datas.length;
-    Alert.alert(
-      `${n} ${n === 1 ? 'peça importada' : 'peças importadas'} 📸`,
-      'Agora toque em cada peça no Closet para ajustar categoria, cor e detalhes.',
-      [{ text: 'Ver Closet', onPress: onDone }],
-    );
+    // Alert é invisível na web — vai direto pro Closet (mostra as peças salvas).
+    onDone();
   }
 
   async function handleSave() {
@@ -209,7 +183,9 @@ export function AddItemScreen({
       // só re-persiste a imagem se ela foi trocada
       const savedUri = imageChanged
         ? imageUri
-          ? await persistImage(imageUri)
+          ? imageUri.startsWith('data:')
+            ? imageUri
+            : await persistImage(imageUri)
           : ''
         : editing.imageUri;
       updateItem(editing.id, {
@@ -226,7 +202,11 @@ export function AddItemScreen({
       return;
     }
 
-    const savedUri = imageUri ? await persistImage(imageUri) : '';
+    const savedUri = imageUri
+      ? imageUri.startsWith('data:')
+        ? imageUri
+        : await persistImage(imageUri)
+      : '';
     addItem({
       imageUri: savedUri,
       name: finalName,
@@ -237,16 +217,8 @@ export function AddItemScreen({
       rainproof,
       tags,
     });
-    // limpa para o próximo cadastro
-    setImageUri('');
-    setImageChanged(false);
-    setName('');
-    setTags([]);
-    setCustomTag('');
-    Alert.alert('Peça adicionada! 👗', 'Quer cadastrar outra?', [
-      { text: 'Ver Closet', onPress: onDone },
-      { text: 'Adicionar outra', style: 'cancel' },
-    ]);
+    // Alert é invisível na web — vai pro Closet, que já mostra a peça salva.
+    onDone();
   }
 
   return (
