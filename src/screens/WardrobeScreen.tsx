@@ -2,13 +2,14 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import {
   CATEGORY_EMOJI,
@@ -32,33 +33,36 @@ export function WardrobeScreen({
 }) {
   const { items, removeItem, clearAll } = useWardrobe();
   const [filter, setFilter] = useState<Category | 'all'>('all');
+  // Confirmação no app (Alert do RN é invisível na web).
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    text: string;
+    danger: string;
+    onOk: () => void;
+  } | null>(null);
 
   function confirmClearAll() {
-    Alert.alert(
-      'Limpar guarda-roupa',
-      `Isso vai apagar todas as ${items.length} peças (e os looks salvos). Não dá para desfazer.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Apagar tudo', style: 'destructive', onPress: clearAll },
-      ],
-    );
+    setConfirm({
+      title: 'Limpar guarda-roupa?',
+      text: `Isso apaga todas as ${items.length} peças e os looks salvos. Não dá para desfazer.`,
+      danger: 'Apagar tudo',
+      onOk: clearAll,
+    });
+  }
+
+  function confirmDelete(item: ClothingItem) {
+    setConfirm({
+      title: 'Excluir esta peça?',
+      text: `"${item.name}" sai do closet e dos looks. Não dá para desfazer.`,
+      danger: 'Excluir',
+      onOk: () => removeItem(item.id),
+    });
   }
 
   const filtered = useMemo(
     () => (filter === 'all' ? items : items.filter((i) => i.category === filter)),
     [items, filter],
   );
-
-  function confirmDelete(item: ClothingItem) {
-    Alert.alert(item.name, 'O que deseja fazer?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: () => removeItem(item.id),
-      },
-    ]);
-  }
 
   return (
     <View style={styles.container}>
@@ -116,24 +120,61 @@ export function WardrobeScreen({
           renderItem={({ item }) => {
             const color = COLORS.find((c) => c.id === item.colorId);
             return (
-              <Pressable
-                style={styles.card}
-                onPress={() => onEdit(item.id)}
-                onLongPress={() => confirmDelete(item)}
-                delayLongPress={350}
-              >
-                <ItemThumb item={item} style={styles.cardImg} />
-                <Text style={styles.cardName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.cardMeta} numberOfLines={1}>
-                  {color?.label} · usada {item.wearCount}x
-                </Text>
-              </Pressable>
+              <View style={styles.cardWrap}>
+                <Pressable
+                  style={styles.card}
+                  onPress={() => onEdit(item.id)}
+                  onLongPress={() => confirmDelete(item)}
+                  delayLongPress={350}
+                >
+                  <ItemThumb item={item} style={styles.cardImg} />
+                  <Text style={styles.cardName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.cardMeta} numberOfLines={1}>
+                    {color?.label} · usada {item.wearCount}x
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.deleteBtn}
+                  onPress={() => confirmDelete(item)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="trash" size={15} color="#fff" />
+                </Pressable>
+              </View>
             );
           }}
         />
       )}
+
+      <Modal
+        visible={!!confirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirm(null)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setConfirm(null)}>
+          <Pressable style={styles.confirmBox} onPress={() => {}}>
+            <Text style={styles.confirmTitle}>{confirm?.title}</Text>
+            <Text style={styles.confirmText}>{confirm?.text}</Text>
+            <View style={styles.confirmBtns}>
+              <Pressable style={styles.cancelBtn} onPress={() => setConfirm(null)}>
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </Pressable>
+              <Pressable
+                style={styles.dangerBtn}
+                onPress={() => {
+                  confirm?.onOk();
+                  setConfirm(null);
+                }}
+              >
+                <Text style={styles.dangerText}>{confirm?.danger}</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -153,11 +194,23 @@ const styles = StyleSheet.create({
   count: { fontSize: 14, color: theme.colors.muted },
   clearAll: { fontSize: 13, color: theme.colors.danger, fontWeight: '600' },
   filters: { paddingBottom: 14 },
+  cardWrap: { flex: 1, position: 'relative' },
   card: {
-    flex: 1,
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
     padding: 8,
+    ...theme.shadow.card,
+  },
+  deleteBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: theme.colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...theme.shadow.card,
   },
   cardImg: { height: 180, borderRadius: theme.radius.sm },
@@ -175,4 +228,41 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
   },
   emptyBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  overlay: {
+    flex: 1,
+    backgroundColor: theme.colors.overlay,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  confirmBox: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.lg,
+    padding: 22,
+    width: '100%',
+    maxWidth: 360,
+    ...theme.shadow.card,
+  },
+  confirmTitle: { fontSize: theme.font.h2, fontWeight: '800', color: theme.colors.text },
+  confirmText: {
+    fontSize: theme.font.body,
+    color: theme.colors.muted,
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  confirmBtns: { flexDirection: 'row', gap: 10, marginTop: 22, justifyContent: 'flex-end' },
+  cancelBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surfaceAlt,
+  },
+  cancelText: { color: theme.colors.text, fontWeight: '700', fontSize: theme.font.small },
+  dangerBtn: {
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.danger,
+  },
+  dangerText: { color: '#fff', fontWeight: '800', fontSize: theme.font.small },
 });

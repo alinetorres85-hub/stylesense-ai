@@ -1,6 +1,6 @@
 // Estado global do guarda-roupa via React Context (local-first).
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ClothingItem,
   DailyLook,
@@ -82,22 +82,30 @@ export function WardrobeProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Persiste sempre que muda (após carga inicial).
+  // Só persiste MUDANÇAS feitas após a carga inicial. Isso evita que uma carga
+  // que falhou (rede) e voltou vazia sobrescreva os dados bons na nuvem — que era
+  // a causa das peças/fotos "resetarem" no logoff.
+  // (O efeito que marca hydrated fica por ÚLTIMO, então roda depois destes.)
+  const hydrated = useRef(false);
   useEffect(() => {
-    if (!loading) saveItems(items);
+    if (!loading && hydrated.current) saveItems(items);
   }, [items, loading]);
   useEffect(() => {
-    if (!loading) saveSavedOutfits(savedOutfits);
+    if (!loading && hydrated.current) saveSavedOutfits(savedOutfits);
   }, [savedOutfits, loading]);
   useEffect(() => {
-    if (!loading) saveDailyLooks(dailyLooks);
+    if (!loading && hydrated.current) saveDailyLooks(dailyLooks);
   }, [dailyLooks, loading]);
   useEffect(() => {
-    if (!loading) saveWeekPlan(weekPlan);
+    if (!loading && hydrated.current) saveWeekPlan(weekPlan);
   }, [weekPlan, loading]);
   useEffect(() => {
-    if (!loading) saveAvatar(avatar);
+    if (!loading && hydrated.current) saveAvatar(avatar);
   }, [avatar, loading]);
+  // Marca "carregado" DEPOIS que os efeitos acima rodaram (ordem de declaração).
+  useEffect(() => {
+    if (!loading) hydrated.current = true;
+  }, [loading]);
 
   const addItem = useCallback<WardrobeContextValue['addItem']>((data) => {
     const item: ClothingItem = {
