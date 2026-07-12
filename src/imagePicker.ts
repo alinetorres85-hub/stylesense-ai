@@ -5,6 +5,29 @@
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
+// Converte um File em data URL. Se for HEIC/HEIF (câmera do celular, que o
+// navegador NÃO exibe), converte pra JPEG antes com o heic2any.
+async function fileToDataUrl(file: any): Promise<string | null> {
+  let blob: any = file;
+  const isHeic =
+    /image\/hei[cf]/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '');
+  if (isHeic) {
+    try {
+      const heic2any = (await import('heic2any')).default as any;
+      const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+      blob = Array.isArray(out) ? out[0] : out;
+    } catch {
+      // se a conversão falhar, segue com o arquivo original
+    }
+  }
+  return new Promise((res) => {
+    const r = new (globalThis as any).FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => res(null);
+    r.readAsDataURL(blob);
+  });
+}
+
 // Web: abre o seletor de arquivo e devolve o data URL cru (sem redimensionar).
 function pickFileWeb(capture?: 'user' | 'environment', multiple = false): Promise<string[]> {
   return new Promise((resolve) => {
@@ -29,17 +52,7 @@ function pickFileWeb(capture?: 'user' | 'environment', multiple = false): Promis
     input.onchange = async () => {
       const files: any[] = input.files ? Array.from(input.files) : [];
       if (!files.length) return finish([]);
-      const urls = await Promise.all(
-        files.map(
-          (f) =>
-            new Promise<string | null>((res) => {
-              const r = new (globalThis as any).FileReader();
-              r.onload = () => res(r.result as string);
-              r.onerror = () => res(null);
-              r.readAsDataURL(f);
-            }),
-        ),
-      );
+      const urls = await Promise.all(files.map((f) => fileToDataUrl(f)));
       finish(urls.filter((u): u is string => !!u));
     };
     input.oncancel = () => finish([]);

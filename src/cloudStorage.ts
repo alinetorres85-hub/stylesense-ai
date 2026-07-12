@@ -26,6 +26,51 @@ async function currentUid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+// Converte um blob HEIC/HEIF em data URL JPEG (via heic2any, carregado sob demanda).
+async function heicBlobToJpegDataUrl(blob: Blob): Promise<string> {
+  const heic2any = (await import('heic2any')).default as any;
+  const out = await heic2any({ blob, toType: 'image/jpeg', quality: 0.85 });
+  const jpeg = Array.isArray(out) ? out[0] : out;
+  return await new Promise<string>((res, rej) => {
+    const r = new (globalThis as any).FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(jpeg);
+  });
+}
+
+// Garante que a foto da peça esteja no Storage e em formato que o navegador
+// exibe (JPEG). Devolve a NOVA url se mudou algo, ou null se já estava ok.
+// Repara também fotos antigas que subiram como HEIC (não exibem).
+export async function syncItemImage(uri: string): Promise<string | null> {
+  if (!uri) return null;
+
+  // Foto ainda embutida no banco (data URL) → sobe pro Storage.
+  if (isDataUrl(uri)) {
+    if (/^data:image\/hei[cf]/i.test(uri)) {
+      const blob = await (await fetch(uri)).blob();
+      return await uploadImage(await heicBlobToJpegDataUrl(blob));
+    }
+    return await uploadImage(uri);
+  }
+
+  // Já no Storage: se estiver em HEIC, baixa, converte e re-envia.
+  if (uri.includes('/storage/v1/object/public/')) {
+    try {
+      const head = await fetch(uri, { method: 'HEAD' });
+      const ct = head.headers.get('content-type') || '';
+      if (/hei[cf]/i.test(ct)) {
+        const blob = await (await fetch(uri)).blob();
+        return await uploadImage(await heicBlobToJpegDataUrl(blob));
+      }
+    } catch {
+      // ignora — mantém como está
+    }
+    return null;
+  }
+  return null;
+}
+
 // Sobe uma imagem (data URL) e devolve a URL pública. Lança erro se falhar.
 export async function uploadImage(dataUrl: string): Promise<string> {
   const uid = await currentUid();

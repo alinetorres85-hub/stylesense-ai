@@ -21,7 +21,7 @@ import {
 import { Chip } from '../components/ui';
 import { ItemThumb } from '../components/ItemThumb';
 import { useWardrobe } from '../store';
-import { uploadImage, isDataUrl } from '../cloudStorage';
+import { syncItemImage } from '../cloudStorage';
 
 const FILTERS: (Category | 'all')[] = ['all', 'top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
 
@@ -37,35 +37,39 @@ export function WardrobeScreen({
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
-  // Sobe pro Storage as fotos que ainda estão como data URL (pesadas no banco).
+  // Sincroniza/repara as fotos: sobe as que faltam pro Storage e conserta as que
+  // subiram como HEIC (que o navegador não exibe) convertendo pra JPEG.
   async function syncNow() {
-    if (syncing) return;
-    const pending = items.filter((i) => isDataUrl(i.imageUri));
-    if (pending.length === 0) {
-      setSyncMsg('Tudo já está salvo na nuvem ✓');
-      setTimeout(() => setSyncMsg(null), 3000);
-      return;
-    }
+    if (syncing || items.length === 0) return;
     setSyncing(true);
-    setSyncMsg(`Enviando fotos… (0/${pending.length})`);
-    let ok = 0;
-    for (const it of pending) {
-      try {
-        const url = await uploadImage(it.imageUri);
-        updateItem(it.id, { imageUri: url });
-        ok++;
-      } catch {
-        // continua nas próximas
+    const list = [...items];
+    const total = list.length;
+    let done = 0;
+    let changed = 0;
+    setSyncMsg(`Sincronizando fotos… (0/${total})`);
+    let idx = 0;
+    async function worker() {
+      while (idx < list.length) {
+        const it = list[idx++];
+        try {
+          const url = await syncItemImage(it.imageUri);
+          if (url) {
+            updateItem(it.id, { imageUri: url });
+            changed++;
+          }
+        } catch {
+          // continua nas próximas
+        }
+        done++;
+        setSyncMsg(`Sincronizando fotos… (${done}/${total})`);
       }
-      setSyncMsg(`Enviando fotos… (${ok}/${pending.length})`);
     }
+    await Promise.all(Array.from({ length: Math.min(3, list.length) }, worker));
     setSyncing(false);
     setSyncMsg(
-      ok === pending.length
-        ? `✓ ${ok} foto(s) salvas na nuvem!`
-        : `Enviei ${ok} de ${pending.length}. Tente de novo pra concluir.`,
+      changed > 0 ? `✓ ${changed} foto(s) corrigidas na nuvem!` : 'Tudo certo — nada a corrigir ✓',
     );
-    setTimeout(() => setSyncMsg(null), 5000);
+    setTimeout(() => setSyncMsg(null), 6000);
   }
   // Confirmação no app (Alert do RN é invisível na web).
   const [confirm, setConfirm] = useState<{
