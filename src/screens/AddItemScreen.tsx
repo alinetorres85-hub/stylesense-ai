@@ -25,6 +25,7 @@ import { Chip, LevelPicker, PrimaryButton, Swatch } from '../components/ui';
 import { useWardrobe } from '../store';
 import { persistImage } from '../images';
 import { pickImage, pickImages } from '../imagePicker';
+import { uploadImage, isDataUrl } from '../cloudStorage';
 import { loadApiKey, saveApiKey } from '../storage';
 import { detectGarment } from '../detect';
 
@@ -58,10 +59,20 @@ export function AddItemScreen({
   const [keyInput, setKeyInput] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [detecting, setDetecting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     loadApiKey().then(setApiKey);
   }, []);
+
+  // Deixa a imagem pronta para guardar: data URL → sobe pro Storage (URL leve).
+  async function toStoredUri(uri: string): Promise<string> {
+    if (!uri) return '';
+    if (isDataUrl(uri)) return await uploadImage(uri);
+    if (uri.startsWith('http')) return uri;
+    return await persistImage(uri);
+  }
 
   function toggleTag(tag: string) {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -160,35 +171,67 @@ export function AddItemScreen({
   async function importMany() {
     const uris = await pickImages();
     if (!uris.length) return;
-
-    const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = uris.map((uri) => ({
-      imageUri: uri,
-      name: 'Nova peça',
-      category: 'top' as Category,
-      colorId: 'preto',
-      warmth: 3,
-      formality: 3,
-      rainproof: false,
-      tags: [],
-    }));
-    addItems(datas);
-    // Alert é invisível na web — vai direto pro Closet (mostra as peças salvas).
-    onDone();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      // Sobe cada foto pro Storage; mantém as que deram certo.
+      const stored = await Promise.all(
+        uris.map(async (uri) => {
+          try {
+            return await toStoredUri(uri);
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const ok = stored.filter((u): u is string => !!u);
+      const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = ok.map((uri) => ({
+        imageUri: uri,
+        name: 'Nova peça',
+        category: 'top' as Category,
+        colorId: 'preto',
+        warmth: 3,
+        formality: 3,
+        rainproof: false,
+        tags: [],
+      }));
+      if (datas.length) addItems(datas);
+      if (ok.length < uris.length) {
+        setSaveError(`Enviei ${ok.length} de ${uris.length}. Algumas falharam — tente as que faltaram de novo.`);
+      } else {
+        onDone();
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleSave() {
+    if (saving) return;
     const finalName = name.trim() || CATEGORY_LABELS[category];
+    setSaveError(null);
+    setSaving(true);
+    try {
+      if (editing) {
+        const savedUri = imageChanged
+          ? await toStoredUri(imageUri)
+          : editing.imageUri;
+        updateItem(editing.id, {
+          imageUri: savedUri,
+          name: finalName,
+          category,
+          colorId,
+          warmth,
+          formality,
+          rainproof,
+          tags,
+        });
+        onDone();
+        return;
+      }
 
-    if (editing) {
-      // só re-persiste a imagem se ela foi trocada
-      const savedUri = imageChanged
-        ? imageUri
-          ? imageUri.startsWith('data:')
-            ? imageUri
-            : await persistImage(imageUri)
-          : ''
-        : editing.imageUri;
-      updateItem(editing.id, {
+      const savedUri = await toStoredUri(imageUri);
+      addItem({
         imageUri: savedUri,
         name: finalName,
         category,
@@ -199,26 +242,13 @@ export function AddItemScreen({
         tags,
       });
       onDone();
-      return;
+    } catch (e) {
+      setSaveError(
+        'Não consegui enviar a foto pra nuvem. Verifique a internet e tente de novo.',
+      );
+    } finally {
+      setSaving(false);
     }
-
-    const savedUri = imageUri
-      ? imageUri.startsWith('data:')
-        ? imageUri
-        : await persistImage(imageUri)
-      : '';
-    addItem({
-      imageUri: savedUri,
-      name: finalName,
-      category,
-      colorId,
-      warmth,
-      formality,
-      rainproof,
-      tags,
-    });
-    // Alert é invisível na web — vai pro Closet, que já mostra a peça salva.
-    onDone();
   }
 
   return (
@@ -362,8 +392,9 @@ export function AddItemScreen({
         <PrimaryButton label="+ Add" variant="outline" onPress={addCustomTag} />
       </View>
 
+      {saveError && <Text style={styles.saveError}>⚠️ {saveError}</Text>}
       <PrimaryButton
-        label={editing ? 'Salvar alterações' : 'Salvar peça'}
+        label={saving ? 'Enviando foto…' : editing ? 'Salvar alterações' : 'Salvar peça'}
         onPress={handleSave}
         style={{ marginTop: 20 }}
       />
@@ -375,6 +406,12 @@ export function AddItemScreen({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.bg },
   content: { padding: 20 },
+  saveError: {
+    fontSize: theme.font.small,
+    color: theme.colors.danger,
+    marginTop: 16,
+    textAlign: 'center',
+  },
   title: { fontSize: theme.font.title, fontWeight: '700', color: theme.colors.text, marginBottom: 16 },
   importCard: {
     flexDirection: 'row',

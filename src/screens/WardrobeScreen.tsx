@@ -21,6 +21,7 @@ import {
 import { Chip } from '../components/ui';
 import { ItemThumb } from '../components/ItemThumb';
 import { useWardrobe } from '../store';
+import { uploadImage, isDataUrl } from '../cloudStorage';
 
 const FILTERS: (Category | 'all')[] = ['all', 'top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
 
@@ -31,8 +32,41 @@ export function WardrobeScreen({
   onAdd: () => void;
   onEdit: (id: string) => void;
 }) {
-  const { items, removeItem, clearAll } = useWardrobe();
+  const { items, removeItem, clearAll, updateItem } = useWardrobe();
   const [filter, setFilter] = useState<Category | 'all'>('all');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  // Sobe pro Storage as fotos que ainda estão como data URL (pesadas no banco).
+  async function syncNow() {
+    if (syncing) return;
+    const pending = items.filter((i) => isDataUrl(i.imageUri));
+    if (pending.length === 0) {
+      setSyncMsg('Tudo já está salvo na nuvem ✓');
+      setTimeout(() => setSyncMsg(null), 3000);
+      return;
+    }
+    setSyncing(true);
+    setSyncMsg(`Enviando fotos… (0/${pending.length})`);
+    let ok = 0;
+    for (const it of pending) {
+      try {
+        const url = await uploadImage(it.imageUri);
+        updateItem(it.id, { imageUri: url });
+        ok++;
+      } catch {
+        // continua nas próximas
+      }
+      setSyncMsg(`Enviando fotos… (${ok}/${pending.length})`);
+    }
+    setSyncing(false);
+    setSyncMsg(
+      ok === pending.length
+        ? `✓ ${ok} foto(s) salvas na nuvem!`
+        : `Enviei ${ok} de ${pending.length}. Tente de novo pra concluir.`,
+    );
+    setTimeout(() => setSyncMsg(null), 5000);
+  }
   // Confirmação no app (Alert do RN é invisível na web).
   const [confirm, setConfirm] = useState<{
     title: string;
@@ -77,6 +111,18 @@ export function WardrobeScreen({
           )}
         </View>
       </View>
+
+      {items.length > 0 && (
+        <View style={styles.syncRow}>
+          <Pressable style={styles.syncBtn} onPress={syncNow} disabled={syncing}>
+            <Ionicons name="cloud-upload-outline" size={16} color={theme.colors.accent} />
+            <Text style={styles.syncText}>
+              {syncing ? 'Sincronizando…' : 'Sincronizar na nuvem'}
+            </Text>
+          </Pressable>
+          {syncMsg && <Text style={styles.syncMsg}>{syncMsg}</Text>}
+        </View>
+      )}
 
       <View style={styles.filters}>
         <FlatList
@@ -193,6 +239,19 @@ const styles = StyleSheet.create({
   headerRight: { alignItems: 'flex-end', gap: 2 },
   count: { fontSize: 14, color: theme.colors.muted },
   clearAll: { fontSize: 13, color: theme.colors.danger, fontWeight: '600' },
+  syncRow: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 },
+  syncBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: theme.colors.accentSoft,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: theme.radius.pill,
+  },
+  syncText: { color: theme.colors.accent, fontWeight: '700', fontSize: theme.font.small },
+  syncMsg: { fontSize: theme.font.small, color: theme.colors.muted, fontWeight: '600' },
   filters: { paddingBottom: 14 },
   cardWrap: { flex: 1, position: 'relative' },
   card: {
