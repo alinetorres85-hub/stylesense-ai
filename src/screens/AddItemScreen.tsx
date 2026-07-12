@@ -31,6 +31,21 @@ import { detectGarment } from '../detect';
 
 const CATEGORIES: Category[] = ['top', 'bottom', 'dress', 'outerwear', 'shoes', 'accessory'];
 
+// Roda `fn` sobre a lista com no máximo `limit` em paralelo (evita sobrecarregar
+// o upload/rede ao importar muitas fotos de uma vez).
+async function mapLimit<T, R>(list: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(list.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < list.length) {
+      const i = idx++;
+      results[i] = await fn(list[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, list.length) }, worker));
+  return results;
+}
+
 export function AddItemScreen({
   editId,
   onDone,
@@ -174,16 +189,14 @@ export function AddItemScreen({
     setSaveError(null);
     setSaving(true);
     try {
-      // Sobe cada foto pro Storage; mantém as que deram certo.
-      const stored = await Promise.all(
-        uris.map(async (uri) => {
-          try {
-            return await toStoredUri(uri);
-          } catch {
-            return null;
-          }
-        }),
-      );
+      // Sobe as fotos pro Storage em lotes (4 por vez); mantém as que deram certo.
+      const stored = await mapLimit(uris, 4, async (uri) => {
+        try {
+          return await toStoredUri(uri);
+        } catch {
+          return null;
+        }
+      });
       const ok = stored.filter((u): u is string => !!u);
       const datas: Omit<ClothingItem, 'id' | 'createdAt' | 'wearCount'>[] = ok.map((uri) => ({
         imageUri: uri,

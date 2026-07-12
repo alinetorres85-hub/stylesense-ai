@@ -15,19 +15,35 @@ export function ItemThumb({
   rounded?: number;
 }) {
   const color = COLORS.find((c) => c.id === item.colorId);
-  // se a imagem falhar (ex.: arquivo apagado), cai no emoji da categoria
+  // Se a foto falhar ao carregar (ex.: rede sobrecarregada ao abrir muitas de
+  // uma vez), tenta de novo algumas vezes antes de cair no emoji da categoria.
+  const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [item.imageUri]);
+  useEffect(() => {
+    setAttempt(0);
+    setFailed(false);
+  }, [item.imageUri]);
   const showImage = !!item.imageUri && !failed;
+  const src =
+    attempt > 0
+      ? `${item.imageUri}${item.imageUri.includes('?') ? '&' : '?'}r=${attempt}`
+      : item.imageUri;
 
   return (
     <View style={[styles.wrap, { borderRadius: rounded }, style]}>
       {showImage ? (
         <Image
-          source={{ uri: item.imageUri }}
+          key={attempt}
+          source={{ uri: src }}
           style={styles.img}
           resizeMode="cover"
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (attempt < 4) {
+              setTimeout(() => setAttempt((a) => a + 1), 500 * (attempt + 1));
+            } else {
+              setFailed(true);
+            }
+          }}
         />
       ) : (
         <View style={styles.placeholder}>
